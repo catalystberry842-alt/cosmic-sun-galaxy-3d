@@ -1,0 +1,3402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cosmic Sun &amp; Spiral Galaxy — Interactive 3D WebGL2</title>
+  <style>
+    :root {
+      --background: #02030a;
+      --card: rgba(10, 14, 28, 0.72);
+      --border: rgba(255, 255, 255, 0.15);
+      --foreground: #f1f5f9;
+      --muted-foreground: #94a3b8;
+      --primary: #f59e0b;
+      --primary-foreground: #09090b;
+      --secondary: rgba(255, 255, 255, 0.10);
+      --secondary-foreground: #e2e8f0;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #02030a;
+      color: var(--foreground);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+    #viewport {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #02030a;
+    }
+    canvas#gl-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: crosshair;
+    }
+    canvas#gl-canvas.dragging { cursor: grabbing; }
+
+    .glass-panel {
+      background: color-mix(in srgb, var(--card) 82%, transparent);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border);
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+    }
+    .hud-layer { transition: opacity 0.35s ease, transform 0.35s ease; }
+    .hud-hidden .hud-layer { opacity: 0; pointer-events: none; }
+    .hidden { display: none !important; }
+
+    .hud-top-left {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      z-index: 10;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      max-width: 74vw;
+      pointer-events: none;
+    }
+    .hud-top-right {
+      position: fixed;
+      top: 14px;
+      right: 14px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hud-bottom {
+      position: fixed;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      max-width: 96vw;
+    }
+    .pill-bar {
+      pointer-events: auto;
+      display: flex;
+      flex-wrap: nowrap;
+      width: max-content;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 4px 6px;
+      border-radius: 9999px;
+      font-size: 12px;
+    }
+    .status-pill {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+    }
+    .live-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #f59e0b;
+      box-shadow: 0 0 10px #f59e0b;
+      animation: pulseDot 2s infinite ease-in-out;
+    }
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.82); }
+    }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .muted { color: var(--muted-foreground); }
+    .accent-text { color: var(--primary); }
+    .divider-l { padding-left: 8px; border-left: 1px solid var(--border); }
+    .divider-r { padding-right: 6px; margin-right: 2px; border-right: 1px solid var(--border); display: flex; align-items: center; gap: 3px; }
+
+    .pill-btn {
+      appearance: none;
+      border: none;
+      background: transparent;
+      color: var(--foreground);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: background 0.18s ease, color 0.18s ease, opacity 0.18s ease;
+      white-space: nowrap;
+    }
+    .pill-btn:hover { background: var(--secondary); }
+    .pill-btn.active {
+      background: var(--primary);
+      color: var(--primary-foreground);
+      font-weight: 600;
+    }
+    .pill-btn.active:hover { opacity: 0.92; background: var(--primary); }
+    .top-btn {
+      appearance: none;
+      color: var(--foreground);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: opacity 0.18s ease, background 0.18s ease;
+    }
+    .top-btn:hover { opacity: 0.9; }
+
+    #hint-pill {
+      pointer-events: none;
+      padding: 5px 14px;
+      border-radius: 9999px;
+      font-size: 12px;
+      color: var(--muted-foreground);
+      transition: opacity 0.7s ease;
+      white-space: nowrap;
+    }
+    #settings-panel {
+      position: fixed;
+      top: 56px;
+      right: 14px;
+      z-index: 20;
+      width: 288px;
+      border-radius: 16px;
+      padding: 16px;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+    .settings-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+    }
+    .slider-row { display: flex; flex-direction: column; gap: 4px; }
+    .slider-head { display: flex; justify-content: space-between; align-items: center; }
+    input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer; margin: 0; }
+    select.scale-select {
+      width: 100%;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: var(--background);
+      color: var(--foreground);
+      border: 1px solid var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    .help-box {
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      color: var(--muted-foreground);
+      line-height: 1.55;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .help-box strong { color: var(--foreground); font-weight: 600; }
+
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: rgba(2, 3, 10, 0.96);
+      color: #f1f5f9;
+      padding: 24px;
+      text-align: center;
+      transition: opacity 0.45s ease;
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2.5px solid #f59e0b;
+      border-top-color: transparent;
+      animation: spin 0.85s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 780px) {
+      #badge-res, #badge-hdr, #hint-pill { display: none; }
+      .pill-bar { flex-wrap: wrap; max-width: 94vw; border-radius: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport">
+    <canvas id="gl-canvas"></canvas>
+
+    <!-- Top-Left: Live Telemetry & Camera Presets -->
+    <div class="hud-layer hud-top-left">
+      <div class="glass-panel status-pill">
+        <span class="live-dot"></span>
+        <span style="font-weight:600;letter-spacing:-0.01em;">Solaris &amp; Spiral</span>
+        <span id="badge-fps" class="mono muted divider-l">-- FPS</span>
+        <span id="badge-res" class="mono muted">--&times;--</span>
+        <span id="badge-hdr" class="mono accent-text">HDR16F</span>
+      </div>
+
+      <div class="glass-panel pill-bar">
+        <button data-preset="1" class="preset-btn pill-btn active">1 Panorama</button>
+        <button data-preset="2" class="preset-btn pill-btn">2 Sun</button>
+        <button data-preset="3" class="preset-btn pill-btn">3 Galaxy</button>
+        <button data-preset="4" class="preset-btn pill-btn">4 Core</button>
+      </div>
+    </div>
+
+    <!-- Top-Right: Settings, Fullscreen & Hide HUD -->
+    <div class="hud-top-right">
+      <button id="btn-settings" title="Shader &amp; Force Settings" class="hud-layer glass-panel top-btn">Tune</button>
+      <button id="btn-fullscreen" title="Fullscreen (F)" class="hud-layer glass-panel top-btn">Full</button>
+      <button id="btn-hud" title="Toggle HUD (H)" class="glass-panel top-btn">Hide UI</button>
+    </div>
+
+    <!-- Collapsible Floating Settings Popover -->
+    <div id="settings-panel" class="hud-layer glass-panel hidden">
+      <div class="settings-head">
+        <span>Real-Time GPU Controls</span>
+        <span class="mono muted">70k Stars</span>
+      </div>
+
+      <label class="slider-row">
+        <div class="slider-head">
+          <span class="muted">Mouse Field Strength</span>
+          <span id="val-force" class="mono">1.00</span>
+        </div>
+        <input id="slider-force" type="range" min="0" max="2.4" step="0.05" value="1.0" />
+      </label>
+
+      <label class="slider-row">
+        <div class="slider-head">
+          <span class="muted">Mouse Hover Parallax</span>
+          <span id="val-parallax" class="mono">1.00</span>
+        </div>
+        <input id="slider-parallax" type="range" min="0" max="2.0" step="0.05" value="1.0" />
+      </label>
+
+      <label class="slider-row">
+        <div class="slider-head">
+          <span class="muted">Optical Bloom</span>
+          <span id="val-bloom" class="mono">0.48</span>
+        </div>
+        <input id="slider-bloom" type="range" min="0" max="1.35" step="0.02" value="0.48" />
+      </label>
+
+      <label class="slider-row">
+        <div class="slider-head">
+          <span class="muted">Exposure (ACES Filmic)</span>
+          <span id="val-exposure" class="mono">1.04</span>
+        </div>
+        <input id="slider-exposure" type="range" min="0.55" max="1.75" step="0.02" value="1.04" />
+      </label>
+
+      <label class="slider-row">
+        <div class="slider-head">
+          <span class="muted">Simulation Speed</span>
+          <span id="val-speed" class="mono">1.00x</span>
+        </div>
+        <input id="slider-speed" type="range" min="0.0" max="3.0" step="0.05" value="1.0" />
+      </label>
+
+      <label class="slider-row">
+        <div class="slider-head">
+          <span class="muted">Render Scale</span>
+          <span id="val-scale" class="mono">Auto</span>
+        </div>
+        <select id="select-scale" class="scale-select">
+          <option value="auto" selected>Auto (Native DPR capped)</option>
+          <option value="1.0">1.0x Crisp Monitor Native</option>
+          <option value="1.5">1.5x Ultra Supersampled</option>
+          <option value="0.72">0.72x Turbo 60fps</option>
+        </select>
+      </label>
+
+      <div class="help-box">
+        <div><strong>Move Mouse:</strong> 3D parallax + swirl stars &amp; flares</div>
+        <div><strong>Click / Tap:</strong> Unleash 3D shockwave pulse</div>
+        <div><strong>Left-Drag:</strong> Inertial 3D orbit &bull; <strong>Right-Drag:</strong> Pan</div>
+        <div><strong>Scroll:</strong> Deep zoom &bull; <strong>Keys:</strong> 1-4, M, C, Space, R, S, H</div>
+      </div>
+    </div>
+
+    <!-- Bottom-Center: Compact Floating Interactive Dock -->
+    <div class="hud-layer hud-bottom">
+      <div id="hint-pill" class="glass-panel">
+        Move cursor to swirl stars &amp; plasma &bull; Click for shockwave &bull; Drag to orbit &bull; Scroll to zoom
+      </div>
+
+      <div class="glass-panel pill-bar">
+        <div class="divider-r">
+          <button data-mode="0" class="mode-btn pill-btn active">Gravity Swirl</button>
+          <button data-mode="1" class="mode-btn pill-btn">Repel Wave</button>
+          <button data-mode="2" class="mode-btn pill-btn">Solar Magnet</button>
+        </div>
+
+        <button id="btn-pulse" class="pill-btn">Shockwave</button>
+        <button id="btn-orbit" class="pill-btn">Auto-Orbit</button>
+        <button id="btn-play" class="pill-btn">Pause</button>
+        <button id="btn-reset" class="pill-btn">Reset</button>
+        <button id="btn-shot" class="pill-btn">PNG</button>
+      </div>
+    </div>
+
+    <!-- Loading / WebGL Error Overlay -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div id="loading-text" style="font-size:14px;font-weight:500;">Igniting Solar Plasma &amp; 70,000-Star WebGL2 Galaxy&hellip;</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  // =========================================================================
+  // WIDESCREEN MONITOR-RATIO 3D SCENE CONFIGURATION
+  // =========================================================================
+  const SUN_CENTER = [-5.0, -1.45, 3.0];
+  const SUN_RADIUS = 3.4;
+
+  const GALAXY_CENTER = [6.3, 1.45, -24.0];
+  const GALAXY_PITCH_DEG = -54.0;
+  const GALAXY_YAW_DEG = -18.0;
+  const GALAXY_ROLL_DEG = -19.0;
+  const GALAXY_RADIUS = 25.5;
+
+  const SUN_SUBDIVS = 5;           // 20,480 triangles
+  const CORONA_SHELL_SUBDIVS = 4;  // 5,120 triangles
+  const CORONAL_LOOP_COUNT = 36;
+  const LOOP_LEN_SEGS = 44;
+  const LOOP_RAD_SEGS = 10;
+  const SOLAR_FLARE_COUNT = 10500;
+  const GALAXY_STAR_COUNT = 70000;
+  const NEBULA_CLOUD_COUNT = 1150;
+  const DUST_LANE_COUNT = 680;
+  const DEEP_STAR_COUNT = 10000;
+  const DISTANT_GALAXY_COUNT = 72;
+
+  // =========================================================================
+  // DETERMINISTIC PRNG & COLUMN-MAJOR 3D MATH / RAYCASTING
+  // =========================================================================
+  class SeededRNG {
+    constructor(seed = 42) {
+      this.s = seed >>> 0;
+      this._spare = null;
+    }
+    random() {
+      let t = (this.s += 0x6D2B79F5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    uniform(a, b) { return a + (b - a) * this.random(); }
+    int(a, b) { return a + Math.floor(this.random() * (b - a)); }
+    choice(arr, probs = null) {
+      if (!probs) return arr[Math.floor(this.random() * arr.length)];
+      const u = this.random();
+      let acc = 0;
+      for (let i = 0; i < arr.length; i++) {
+        acc += probs[i];
+        if (u <= acc) return arr[i];
+      }
+      return arr[arr.length - 1];
+    }
+    normal(mean = 0, std = 1) {
+      if (this._spare !== null) {
+        const v = this._spare;
+        this._spare = null;
+        return mean + std * v;
+      }
+      let u1 = this.random();
+      while (u1 <= 1e-12) u1 = this.random();
+      const u2 = this.random();
+      const mag = Math.sqrt(-2.0 * Math.log(u1));
+      this._spare = mag * Math.sin(2.0 * Math.PI * u2);
+      return mean + std * (mag * Math.cos(2.0 * Math.PI * u2));
+    }
+    beta(a, b) {
+      const gamma = (k) => {
+        if (k < 1) return gamma(k + 1) * Math.pow(this.random(), 1 / k);
+        const d = k - 1 / 3;
+        const c = 1 / Math.sqrt(9 * d);
+        while (true) {
+          let x, v;
+          do { x = this.normal(); v = 1 + c * x; } while (v <= 0);
+          v = v * v * v;
+          const u = this.random();
+          if (u < 1 - 0.0331 * (x * x) * (x * x)) return d * v;
+          if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+        }
+      };
+      const ga = gamma(a);
+      const gb = gamma(b);
+      return ga / (ga + gb);
+    }
+  }
+
+  const deg2rad = (d) => (d * Math.PI) / 180.0;
+  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+  function vec3Normalize(v) {
+    const l = Math.hypot(v[0], v[1], v[2]);
+    return l > 1e-8 ? [v[0] / l, v[1] / l, v[2] / l] : [0, 0, 0];
+  }
+  function vec3Cross(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0],
+    ];
+  }
+  function vec3Dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function vec3Sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+  function vec3Add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+  function vec3Scale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
+
+  function mat4Mul(a, b) {
+    const out = new Float32Array(16);
+    for (let col = 0; col < 4; col++) {
+      for (let row = 0; row < 4; row++) {
+        out[col * 4 + row] =
+          a[0 * 4 + row] * b[col * 4 + 0] +
+          a[1 * 4 + row] * b[col * 4 + 1] +
+          a[2 * 4 + row] * b[col * 4 + 2] +
+          a[3 * 4 + row] * b[col * 4 + 3];
+      }
+    }
+    return out;
+  }
+
+  function mat4Perspective(fovYDeg, aspect, near, far) {
+    const f = 1.0 / Math.tan(deg2rad(fovYDeg) * 0.5);
+    const m = new Float32Array(16);
+    m[0] = f / Math.max(aspect, 1e-5);
+    m[5] = f;
+    m[10] = (far + near) / (near - far);
+    m[11] = -1.0;
+    m[14] = (2.0 * far * near) / (near - far);
+    return m;
+  }
+
+  function mat4LookAt(eye, target, up) {
+    const f = vec3Normalize(vec3Sub(target, eye));
+    let s = vec3Normalize(vec3Cross(f, up));
+    if (Math.hypot(s[0], s[1], s[2]) < 1e-6) s = [1, 0, 0];
+    const u = vec3Cross(s, f);
+    const m = new Float32Array(16);
+    m[0] = s[0];  m[4] = s[1];  m[8]  = s[2];  m[12] = -vec3Dot(s, eye);
+    m[1] = u[0];  m[5] = u[1];  m[9]  = u[2];  m[13] = -vec3Dot(u, eye);
+    m[2] = -f[0]; m[6] = -f[1]; m[10] = -f[2]; m[14] =  vec3Dot(f, eye);
+    m[3] = 0;     m[7] = 0;     m[11] = 0;     m[15] = 1;
+    return { view: m, right: s, up: u, forward: f };
+  }
+
+  function mat4Translate(t) {
+    const m = new Float32Array(16);
+    m[0] = m[5] = m[10] = m[15] = 1;
+    m[12] = t[0]; m[13] = t[1]; m[14] = t[2];
+    return m;
+  }
+  function mat4RotateX(deg) {
+    const c = Math.cos(deg2rad(deg)), s = Math.sin(deg2rad(deg));
+    const m = new Float32Array(16);
+    m[0] = m[15] = 1;
+    m[5] = c; m[6] = s; m[9] = -s; m[10] = c;
+    return m;
+  }
+  function mat4RotateY(deg) {
+    const c = Math.cos(deg2rad(deg)), s = Math.sin(deg2rad(deg));
+    const m = new Float32Array(16);
+    m[5] = m[15] = 1;
+    m[0] = c; m[2] = -s; m[8] = s; m[10] = c;
+    return m;
+  }
+  function mat4RotateZ(deg) {
+    const c = Math.cos(deg2rad(deg)), s = Math.sin(deg2rad(deg));
+    const m = new Float32Array(16);
+    m[10] = m[15] = 1;
+    m[0] = c; m[1] = s; m[4] = -s; m[5] = c;
+    return m;
+  }
+
+  function buildGalaxyModelMatrix() {
+    return mat4Mul(
+      mat4Translate(GALAXY_CENTER),
+      mat4Mul(
+        mat4RotateZ(GALAXY_ROLL_DEG),
+        mat4Mul(mat4RotateY(GALAXY_YAW_DEG), mat4RotateX(GALAXY_PITCH_DEG))
+      )
+    );
+  }
+
+  // =========================================================================
+  // INTERACTIVE INERTIAL CAMERA RIG + LIVE MOUSE PARALLAX & 3D RAY ENGINE
+  // =========================================================================
+  class InteractiveCameraRig {
+    constructor() {
+      this.autoOrbit = false; // Interactive-first: never fights your mouse!
+      this.fovY = 48.0;
+      this.near = 0.25;
+      this.far = 650.0;
+      this.aspect = 16 / 9;
+
+      this.yaw = -0.06;
+      this.pitch = 0.05;
+      this.distance = 22.0;
+      this.target = [0.2, 0.2, -3.5];
+
+      this.goalYaw = -0.06;
+      this.goalPitch = 0.05;
+      this.goalDistance = 22.0;
+      this.goalTarget = [0.2, 0.2, -3.5];
+
+      // Inertial spin momentum for silky drag release
+      this.velYaw = 0.0;
+      this.velPitch = 0.0;
+
+      // Live mouse hover parallax (NDC -1..1)
+      this.mouseNdc = [0.0, 0.0];
+      this.smoothMouseNdc = [0.0, 0.0];
+      this.mouseInside = false;
+      this.mouseSpeed = 0.0;
+      this.parallaxGain = 1.0;
+
+      // 3D Ray & interactive attractor point in world space
+      this.rayOrigin = [0, 0, 20];
+      this.rayDir = [0, 0, -1];
+      this.mouseWorldPos = [0, 0, -6];
+
+      this.roll = 0.0;
+      this.ambientT = 0.0;
+      this.presetId = 1;
+      this.eye = [0, 1.2, 18.5];
+      this.right = [1, 0, 0];
+      this.up = [0, 1, 0];
+      this.forward = [0, 0, -1];
+
+      this.applyPreset(1, true);
+    }
+
+    setAspect(aspect) {
+      this.aspect = Math.max(aspect, 0.4);
+      // Dynamically adjust vertical FOV so widescreen monitors AND narrower panes
+      // both frame the full Sun + Spiral Galaxy composition cleanly!
+      if (this.aspect >= 1.35) {
+        this.fovY = 47.0;
+      } else {
+        this.fovY = clamp(47.0 + (1.35 - this.aspect) * 26.0, 47.0, 68.0);
+      }
+    }
+
+    applyPreset(preset, instant = false) {
+      this.presetId = preset;
+      this.velYaw = 0.0;
+      this.velPitch = 0.0;
+      if (preset === 1) {
+        // Widescreen Hero Panorama: Blazing Sun left-foreground + sweeping Spiral Galaxy across center-right
+        this.goalYaw = -0.04;
+        this.goalPitch = 0.045;
+        this.goalDistance = 24.4;
+        this.goalTarget = [0.65, 0.25, -4.4];
+      } else if (preset === 2) {
+        // Dramatic Solar Flyby: Boiling sunspots, towering magnetic loops, galaxy looming behind
+        this.goalYaw = 0.24;
+        this.goalPitch = -0.07;
+        this.goalDistance = 10.4;
+        this.goalTarget = [SUN_CENTER[0] + 0.85, SUN_CENTER[1] + 0.2, SUN_CENTER[2] - 0.4];
+      } else if (preset === 3) {
+        // Sweeping Galaxy Vista: Looking across the illuminated spiral arms & dark dust lanes
+        this.goalYaw = -0.32;
+        this.goalPitch = 0.25;
+        this.goalDistance = 31.0;
+        this.goalTarget = [4.4, 1.5, -16.5];
+      } else {
+        // Galactic Core Immersion: Inside the swirling stellar disk looking back toward the Sun
+        this.goalYaw = 0.52;
+        this.goalPitch = 0.36;
+        this.goalDistance = 18.0;
+        this.goalTarget = [GALAXY_CENTER[0] - 1.5, GALAXY_CENTER[1] - 0.5, GALAXY_CENTER[2] + 3.0];
+      }
+      if (instant) {
+        this.yaw = this.goalYaw;
+        this.pitch = this.goalPitch;
+        this.distance = this.goalDistance;
+        this.target = [...this.goalTarget];
+      }
+    }
+
+    reset() {
+      this.autoOrbit = false;
+      this.applyPreset(1, false);
+    }
+
+    dragOrbit(dx, dy) {
+      this.autoOrbit = false;
+      const sens = 0.0052;
+      const dYaw = -dx * sens;
+      const dPitch = dy * sens;
+      this.goalYaw += dYaw;
+      this.goalPitch = clamp(this.goalPitch + dPitch, -1.38, 1.38);
+      this.velYaw = dYaw * 14.0;
+      this.velPitch = dPitch * 14.0;
+    }
+
+    dragPan(dx, dy) {
+      this.autoOrbit = false;
+      const s = this.distance * 0.00145;
+      this.goalTarget[0] += -this.right[0] * dx * s + this.up[0] * dy * s;
+      this.goalTarget[1] += -this.right[1] * dx * s + this.up[1] * dy * s;
+      this.goalTarget[2] += -this.right[2] * dx * s + this.up[2] * dy * s;
+    }
+
+    zoom(delta) {
+      const factor = Math.pow(0.895, delta);
+      this.goalDistance = clamp(this.goalDistance * factor, 6.2, 74.0);
+    }
+
+    setMouseNdc(nx, ny, speedBoost = 0.0) {
+      this.mouseNdc[0] = clamp(nx, -1.0, 1.0);
+      this.mouseNdc[1] = clamp(ny, -1.0, 1.0);
+      this.mouseInside = true;
+      this.mouseSpeed = clamp(this.mouseSpeed + speedBoost, 0.0, 2.5);
+    }
+
+    update(dt, paused, speedMul = 1.0, isDragging = false) {
+      const safeDt = Math.min(Math.max(dt, 0.001), 0.05);
+      if (!paused) {
+        this.ambientT += safeDt * speedMul;
+      }
+
+      // Inertial coasting after mouse drag release
+      if (!isDragging) {
+        this.goalYaw += this.velYaw * safeDt;
+        this.goalPitch = clamp(this.goalPitch + this.velPitch * safeDt, -1.38, 1.38);
+        const dragDecay = Math.exp(-4.8 * safeDt);
+        this.velYaw *= dragDecay;
+        this.velPitch *= dragDecay;
+      }
+
+      // Optional Auto-Orbit mode
+      if (this.autoOrbit && !paused && !isDragging) {
+        this.goalYaw += safeDt * 0.14 * speedMul;
+      }
+
+      // Smooth mouse hover parallax & speed decay
+      const mAlpha = 1.0 - Math.exp(-7.5 * safeDt);
+      const targetMx = this.mouseInside ? this.mouseNdc[0] : 0.0;
+      const targetMy = this.mouseInside ? this.mouseNdc[1] : 0.0;
+      this.smoothMouseNdc[0] += (targetMx - this.smoothMouseNdc[0]) * mAlpha;
+      this.smoothMouseNdc[1] += (targetMy - this.smoothMouseNdc[1]) * mAlpha;
+      this.mouseSpeed *= Math.exp(-3.2 * safeDt);
+
+      // Smooth exponential camera damping
+      const a = 1.0 - Math.exp(-8.5 * safeDt);
+      this.yaw += (this.goalYaw - this.yaw) * a;
+      this.pitch += (this.goalPitch - this.pitch) * a;
+      this.distance += (this.goalDistance - this.distance) * a;
+      for (let i = 0; i < 3; i++) {
+        this.target[i] += (this.goalTarget[i] - this.target[i]) * a;
+      }
+
+      // Subtle alive breathing + instant responsive mouse hover parallax
+      const pGain = this.parallaxGain;
+      const hoverYaw = -this.smoothMouseNdc[0] * 0.14 * pGain;
+      const hoverPitch = this.smoothMouseNdc[1] * 0.095 * pGain;
+      const breathYaw = 0.018 * Math.sin(this.ambientT * 0.22);
+      const breathPitch = 0.012 * Math.cos(this.ambientT * 0.17);
+
+      const effYaw = this.yaw + hoverYaw + breathYaw;
+      const effPitch = clamp(this.pitch + hoverPitch + breathPitch, -1.42, 1.42);
+      const cp = Math.cos(effPitch), sp = Math.sin(effPitch);
+      const cy = Math.cos(effYaw), sy = Math.sin(effYaw);
+
+      this.eye = [
+        this.target[0] + this.distance * cp * sy,
+        this.target[1] + this.distance * sp,
+        this.target[2] + this.distance * cp * cy,
+      ];
+
+      // Subtle dynamic banking when hovering left/right
+      const targetRoll = -this.smoothMouseNdc[0] * 0.025 * pGain + 0.012 * Math.sin(this.ambientT * 0.19);
+      this.roll += (targetRoll - this.roll) * mAlpha;
+
+      const worldUp = [Math.sin(this.roll), Math.cos(this.roll), 0.0];
+      const res = mat4LookAt(this.eye, this.target, worldUp);
+      this.right = res.right;
+      this.up = res.up;
+      this.forward = res.forward;
+
+      // Cast real 3D ray through the live mouse cursor into the cosmos
+      const tanHalfFov = Math.tan(deg2rad(this.fovY) * 0.5);
+      const rx = this.mouseNdc[0] * tanHalfFov * this.aspect;
+      const ry = this.mouseNdc[1] * tanHalfFov;
+      this.rayOrigin = [...this.eye];
+      this.rayDir = vec3Normalize([
+        this.forward[0] + this.right[0] * rx + this.up[0] * ry,
+        this.forward[1] + this.right[1] * rx + this.up[1] * ry,
+        this.forward[2] + this.right[2] * rx + this.up[2] * ry,
+      ]);
+
+      // Compute primary 3D interaction focal point along cursor ray (intersecting plane at target depth)
+      const planeDist = Math.max(this.distance * 0.92, 8.0);
+      this.mouseWorldPos = vec3Add(this.rayOrigin, vec3Scale(this.rayDir, planeDist));
+
+      return res.view;
+    }
+
+    // Cast click point onto closest cosmic focal plane (Sun sphere or galaxy depth)
+    computeClickWorldPoint() {
+      // Check ray intersection near the Sun first
+      const oc = vec3Sub(SUN_CENTER, this.rayOrigin);
+      const tSun = vec3Dot(oc, this.rayDir);
+      if (tSun > 0) {
+        const closest = vec3Add(this.rayOrigin, vec3Scale(this.rayDir, tSun));
+        const dSun = Math.hypot(
+          closest[0] - SUN_CENTER[0],
+          closest[1] - SUN_CENTER[1],
+          closest[2] - SUN_CENTER[2]
+        );
+        if (dSun < SUN_RADIUS * 2.15) {
+          const surfaceDir = vec3Normalize(vec3Sub(closest, SUN_CENTER));
+          return vec3Add(SUN_CENTER, vec3Scale(surfaceDir, SUN_RADIUS * 1.05));
+        }
+      }
+      // Otherwise intersect plane passing through Galaxy center facing camera
+      const toGal = vec3Sub(GALAXY_CENTER, this.rayOrigin);
+      const denom = vec3Dot(this.rayDir, this.forward);
+      const tGal = clamp(vec3Dot(toGal, this.forward) / Math.max(denom, 0.2), 10.0, 58.0);
+      return vec3Add(this.rayOrigin, vec3Scale(this.rayDir, tGal));
+    }
+  }
+
+  // =========================================================================
+  // SHARED GLSL ES 3.00 NOISE, FBM, VORONOI & SOLAR BLACKBODY LIBRARY
+  // =========================================================================
+  const GLSL_HEADER = `#version 300 es
+precision highp float;
+precision highp int;
+`;
+
+  const GLSL_NOISE_LIB = `
+vec4 _mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec3 _mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec4 _permute(vec4 x) { return _mod289(((x * 34.0) + 10.0) * x); }
+vec4 _taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+
+float snoise(vec3 v) {
+    const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+    const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+    vec3 i  = floor(v + dot(v, C.yyy));
+    vec3 x0 = v - i + dot(i, C.xxx);
+    vec3 g = step(x0.yzx, x0.xyz);
+    vec3 l = 1.0 - g;
+    vec3 i1 = min(g.xyz, l.zxy);
+    vec3 i2 = max(g.xyz, l.zxy);
+    vec3 x1 = x0 - i1 + C.xxx;
+    vec3 x2 = x0 - i2 + C.yyy;
+    vec3 x3 = x0 - D.yyy;
+    i = _mod289(i);
+    vec4 p = _permute(_permute(_permute(
+                i.z + vec4(0.0, i1.z, i2.z, 1.0))
+              + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+              + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    float n_ = 0.142857142857;
+    vec3 ns = n_ * D.wyz - D.xzx;
+    vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+    vec4 x_ = floor(j * ns.z);
+    vec4 y_ = floor(j - 7.0 * x_);
+    vec4 x = x_ * ns.x + ns.yyyy;
+    vec4 y = y_ * ns.x + ns.yyyy;
+    vec4 h = 1.0 - abs(x) - abs(y);
+    vec4 b0 = vec4(x.xy, y.xy);
+    vec4 b1 = vec4(x.zw, y.zw);
+    vec4 s0 = floor(b0) * 2.0 + 1.0;
+    vec4 s1 = floor(b1) * 2.0 + 1.0;
+    vec4 sh = -step(h, vec4(0.0));
+    vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+    vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+    vec3 p0 = vec3(a0.xy, h.x);
+    vec3 p1 = vec3(a0.zw, h.y);
+    vec3 p2 = vec3(a1.xy, h.z);
+    vec3 p3 = vec3(a1.zw, h.w);
+    vec4 norm = _taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+    p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+    vec4 m = max(0.5 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+    m = m * m;
+    return 105.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+const mat3 OCTAVE_ROT = mat3(
+     0.00,  0.80,  0.60,
+    -0.80,  0.36, -0.48,
+    -0.60, -0.48,  0.64
+);
+
+float fbm4(vec3 p) {
+    float v = 0.0, a = 0.54;
+    for (int i = 0; i < 4; ++i) {
+        v += a * snoise(p);
+        p = OCTAVE_ROT * p * 2.03 + vec3(7.1, 11.3, -4.9);
+        a *= 0.50;
+    }
+    return v;
+}
+
+float fbm3(vec3 p) {
+    float v = 0.0, a = 0.56;
+    for (int i = 0; i < 3; ++i) {
+        v += a * snoise(p);
+        p = OCTAVE_ROT * p * 2.07 + vec3(-5.3, 8.7, 3.1);
+        a *= 0.48;
+    }
+    return v;
+}
+
+float ridgedFbm3(vec3 p) {
+    float sum = 0.0, amp = 0.58, weight = 1.0;
+    for (int i = 0; i < 3; ++i) {
+        float n = 1.0 - abs(snoise(p));
+        n = n * n * weight;
+        weight = clamp(n * 1.8, 0.0, 1.0);
+        sum += n * amp;
+        p = OCTAVE_ROT * p * 2.12 + vec3(4.2, -7.8, 9.1);
+        amp *= 0.50;
+    }
+    return sum;
+}
+
+float ridgedFbm4(vec3 p) {
+    float sum = 0.0, amp = 0.55, weight = 1.0;
+    for (int i = 0; i < 4; ++i) {
+        float n = 1.0 - abs(snoise(p));
+        n = n * n * weight;
+        weight = clamp(n * 1.8, 0.0, 1.0);
+        sum += n * amp;
+        p = OCTAVE_ROT * p * 2.12 + vec3(4.2, -7.8, 9.1);
+        amp *= 0.50;
+    }
+    return sum;
+}
+
+vec3 _hash33(vec3 p) {
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.xxy + p.yxx) * p.zyx);
+}
+
+vec2 voronoiGranules(vec3 x, float jitterTime) {
+    vec3 n = floor(x - 0.5);
+    vec3 f = x - n;
+    float d1 = 8.0, d2 = 8.0;
+    for (int k = 0; k <= 1; k++) {
+        for (int j = 0; j <= 1; j++) {
+            for (int i = 0; i <= 1; i++) {
+                vec3 g = vec3(float(i), float(j), float(k));
+                vec3 rnd = _hash33(n + g);
+                vec3 o = 0.5 + 0.36 * sin(jitterTime + 6.28318 * rnd);
+                vec3 r = g + o - f;
+                float d = dot(r, r);
+                if (d < d1) { d2 = d1; d1 = d; }
+                else if (d < d2) { d2 = d; }
+            }
+        }
+    }
+    return vec2(sqrt(d1), sqrt(d2) - sqrt(d1));
+}
+
+vec3 solarBlackbody(float t) {
+    t = clamp(t, 0.0, 1.50);
+    vec3 c0 = vec3(0.015, 0.002, 0.0005);
+    vec3 c1 = vec3(0.32,  0.022, 0.002);
+    vec3 c2 = vec3(0.95,  0.16,  0.012);
+    vec3 c3 = vec3(1.75,  0.58,  0.068);
+    vec3 c4 = vec3(2.55,  1.50,  0.44);
+    vec3 c5 = vec3(4.80,  3.95,  2.55);
+    if (t < 0.22) return mix(c0, c1, smoothstep(0.0, 0.22, t));
+    if (t < 0.48) return mix(c1, c2, smoothstep(0.22, 0.48, t));
+    if (t < 0.74) return mix(c2, c3, smoothstep(0.48, 0.74, t));
+    if (t < 0.98) return mix(c3, c4, smoothstep(0.74, 0.98, t));
+    return mix(c4, c5, smoothstep(0.98, 1.45, t));
+}
+`;
+
+  // =========================================================================
+  // 14 CUSTOM GLSL ES 3.00 SHADERS WITH REAL-TIME 3D MOUSE PHYSICS
+  // =========================================================================
+  const SHADERS = {
+    sun: {
+      vs: GLSL_HEADER + GLSL_NOISE_LIB + `
+layout(location = 0) in vec3 in_position;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_sun_center;
+uniform float u_sun_radius;
+uniform float u_time;
+uniform vec3 u_mouse_ray_o;
+uniform vec3 u_mouse_ray_d;
+uniform float u_mouse_strength;
+uniform vec3 u_pulse_pos;
+uniform float u_pulse_age;
+
+out vec3 v_sphere_dir;
+out vec3 v_world_pos;
+out vec3 v_world_normal;
+out float v_disp_height;
+out float v_mouse_heat;
+
+vec3 applySolarRotation(vec3 dir, float t) {
+    float lat = asin(clamp(dir.y, -1.0, 1.0));
+    float omega = 0.055 + 0.032 * cos(lat) * cos(lat);
+    float ang = t * omega;
+    float c = cos(ang), s = sin(ang);
+    return vec3(c * dir.x + s * dir.z, dir.y, -s * dir.x + c * dir.z);
+}
+
+float evalDisplacement(vec3 dir, float t) {
+    vec3 rdir = applySolarRotation(dir, t);
+    vec3 flow = vec3(t * 0.14, -t * 0.09, t * 0.11);
+    float superGran = fbm3(rdir * 3.8 + flow * 0.45);
+    float boil = snoise(rdir * 10.5 - flow * 1.15);
+    float ridge = 1.0 - abs(snoise(rdir * 6.5 + vec3(0.0, t * 0.25, -t * 0.18)));
+    return (superGran * 0.024 + boil * 0.009 + ridge * 0.012);
+}
+
+void main() {
+    vec3 dir = normalize(in_position);
+    float disp = evalDisplacement(dir, u_time);
+
+    // Interactive cursor plasma tide: hovering near the Sun raises glowing tidal flares
+    vec3 baseWorld = u_sun_center + dir * u_sun_radius;
+    float rayProj = max(dot(baseWorld - u_mouse_ray_o, u_mouse_ray_d), 0.0);
+    vec3 closestOnRay = u_mouse_ray_o + u_mouse_ray_d * rayProj;
+    float distToRay = length(baseWorld - closestOnRay);
+    float cursorHeat = exp(-distToRay * distToRay * 0.48) * u_mouse_strength;
+
+    // Expanding shockwave pulse ripple across solar surface
+    float wave = 0.0;
+    if (u_pulse_age > 0.0 && u_pulse_age < 3.6) {
+        float dPulse = length(baseWorld - u_pulse_pos);
+        float front = u_pulse_age * 16.0;
+        float ring = exp(-pow((dPulse - front) * 0.65, 2.0));
+        wave = ring * exp(-u_pulse_age * 1.15);
+    }
+
+    disp += cursorHeat * 0.045 + wave * 0.065;
+
+    vec3 upRef = abs(dir.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 T = normalize(cross(upRef, dir));
+    vec3 B = cross(dir, T);
+    float eps = 0.022;
+    float dT = evalDisplacement(normalize(dir + T * eps), u_time);
+    float dB = evalDisplacement(normalize(dir + B * eps), u_time);
+    vec3 perturbedN = normalize(dir - T * ((dT - disp) / eps) * 0.40 - B * ((dB - disp) / eps) * 0.40);
+
+    vec3 worldPos = u_sun_center + dir * (u_sun_radius * (1.0 + disp));
+    v_sphere_dir = dir;
+    v_world_pos = worldPos;
+    v_world_normal = perturbedN;
+    v_disp_height = disp;
+    v_mouse_heat = clamp(cursorHeat + wave * 1.35, 0.0, 1.6);
+    gl_Position = u_proj * u_view * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + GLSL_NOISE_LIB + `
+in vec3 v_sphere_dir;
+in vec3 v_world_pos;
+in vec3 v_world_normal;
+in float v_disp_height;
+in float v_mouse_heat;
+
+uniform vec3 u_cam_pos;
+uniform float u_time;
+out vec4 fragColor;
+
+vec3 applySolarRotation(vec3 dir, float t) {
+    float lat = asin(clamp(dir.y, -1.0, 1.0));
+    float omega = 0.055 + 0.032 * cos(lat) * cos(lat);
+    float ang = t * omega;
+    float c = cos(ang), s = sin(ang);
+    return vec3(c * dir.x + s * dir.z, dir.y, -s * dir.x + c * dir.z);
+}
+
+void main() {
+    vec3 N = normalize(v_world_normal);
+    vec3 V = normalize(u_cam_pos - v_world_pos);
+    float mu = clamp(dot(N, V), 0.0, 1.0);
+    vec3 dir = normalize(v_sphere_dir);
+    vec3 p = applySolarRotation(dir, u_time);
+    float lat = abs(dir.y);
+
+    vec3 drift1 = vec3(u_time * 0.068, -u_time * 0.044, u_time * 0.052);
+    vec3 warp = vec3(
+        fbm3(p * 3.1 + drift1),
+        fbm3(p * 3.1 + vec3(5.2, -3.7, 2.4) - drift1 * 0.8),
+        fbm3(p * 3.1 + vec3(-4.1, 6.3, -2.9) + drift1 * 0.65)
+    );
+    vec3 warpedP = p + warp * 0.24;
+
+    vec2 vor = voronoiGranules(warpedP * 16.0 + drift1 * 1.5, u_time * 0.95);
+    float granuleCore = 1.0 - smoothstep(0.06, 0.64, vor.x);
+    float intergranularLane = smoothstep(0.02, 0.19, vor.y);
+    float microGranules = fbm3(warpedP * 25.0 - vec3(u_time * 0.22, u_time * 0.15, -u_time * 0.18));
+    float superGran = fbm4(warpedP * 4.8 + drift1 * 0.6);
+    float plasmaRidges = ridgedFbm3(warpedP * 8.4 + vec3(0.0, u_time * 0.14, 0.0));
+
+    float cellContrast = mix(-0.18, 0.24, granuleCore * intergranularLane);
+    float temp = 0.58 + 0.18 * superGran + cellContrast + 0.13 * (plasmaRidges - 0.38)
+               + 0.09 * microGranules + v_disp_height * 3.5 + v_mouse_heat * 0.42;
+
+    float activeBelt = smoothstep(0.02, 0.20, lat) * (1.0 - smoothstep(0.58, 0.85, lat));
+    float magField = fbm4(p * 3.25 + warp * 0.36 + vec3(u_time * 0.015, 0.0, -u_time * 0.012));
+    float spotSignal = (-magField) * (0.62 + 0.78 * activeBelt);
+
+    float penumbraMask = smoothstep(0.24, 0.41, spotSignal);
+    float umbraMask = smoothstep(0.42, 0.56, spotSignal);
+    float penumbraFibrils = ridgedFbm3(p * 26.0 + warp * 1.2 + vec3(u_time * 0.12));
+    temp -= penumbraMask * (0.34 + 0.19 * (1.0 - penumbraFibrils));
+    temp = mix(temp, 0.025 + 0.03 * max(microGranules, 0.0), umbraMask * 0.96);
+
+    float faculaeZone = smoothstep(0.05, 0.28, spotSignal) * (1.0 - smoothstep(0.32, 0.48, spotSignal));
+    float faculaeWeb = pow(clamp(ridgedFbm3(warpedP * 13.0 - drift1 * 0.9), 0.0, 1.0), 2.3);
+    float limbFaculaeBoost = mix(1.0, 2.05, pow(1.0 - mu, 1.55));
+    float faculaeBoost = (faculaeZone * 0.78 + 0.18 * activeBelt + v_mouse_heat * 0.55) * faculaeWeb * limbFaculaeBoost;
+    temp += faculaeBoost;
+
+    vec3 color = solarBlackbody(temp);
+    color += vec3(3.1, 2.25, 1.25) * pow(clamp(faculaeBoost, 0.0, 1.0), 1.8);
+    color += vec3(3.6, 2.35, 1.05) * v_mouse_heat * (0.45 + 0.65 * plasmaRidges);
+
+    vec3 limbDark;
+    limbDark.r = mix(0.22, 1.0, pow(mu, 0.50));
+    limbDark.g = mix(0.05, 1.0, pow(mu, 0.86));
+    limbDark.b = mix(0.01, 1.0, pow(mu, 1.32));
+    color *= limbDark;
+
+    float fresnel = pow(1.0 - mu, 3.5);
+    float spiculeNoise = 0.60 + 0.65 * ridgedFbm3(warpedP * 17.5 + vec3(u_time * 0.35));
+    vec3 chromoRim = vec3(2.55, 0.60, 0.09) * fresnel * spiculeNoise * (1.12 + 0.55 * v_mouse_heat);
+    float edgeSpark = pow(1.0 - mu, 6.6) * (0.65 + 0.55 * plasmaRidges);
+    chromoRim += vec3(3.8, 1.65, 0.42) * edgeSpark * 0.74;
+    color += chromoRim;
+
+    fragColor = vec4(max(color, vec3(0.0)), 1.0);
+}`
+    },
+
+    coronaShell: {
+      vs: GLSL_HEADER + GLSL_NOISE_LIB + `
+layout(location = 0) in vec3 in_position;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_sun_center;
+uniform float u_shell_radius;
+uniform float u_layer_id;
+uniform float u_time;
+
+out vec3 v_dir;
+out vec3 v_world_pos;
+out vec3 v_normal;
+
+void main() {
+    vec3 dir = normalize(in_position);
+    float pulse = fbm3(dir * (2.6 + u_layer_id * 0.9) + vec3(u_time * 0.16, -u_time * 0.12, u_time * 0.10));
+    float r = u_shell_radius * (1.0 + pulse * (0.045 + 0.035 * u_layer_id));
+    vec3 worldPos = u_sun_center + dir * r;
+    v_dir = dir;
+    v_world_pos = worldPos;
+    v_normal = dir;
+    gl_Position = u_proj * u_view * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + GLSL_NOISE_LIB + `
+in vec3 v_dir;
+in vec3 v_world_pos;
+in vec3 v_normal;
+uniform vec3 u_cam_pos;
+uniform float u_layer_id;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    vec3 N = normalize(v_normal);
+    vec3 V = normalize(u_cam_pos - v_world_pos);
+    float ndotv = abs(dot(N, V));
+    float rim = pow(1.0 - ndotv, 2.1 + u_layer_id * 0.65) * smoothstep(0.0, 0.24, ndotv);
+    vec3 p = normalize(v_dir);
+    float ang = u_time * (0.05 + 0.015 * u_layer_id);
+    mat2 rot = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+    p.xz = rot * p.xz;
+    vec3 flow = vec3(u_time * 0.18, -u_time * 0.11, u_time * 0.14);
+    float wisps = ridgedFbm3(p * (4.2 + u_layer_id * 1.4) + flow);
+    float fine = fbm3(p * 9.0 - flow * 1.6) * 0.5 + 0.5;
+    float intensity = rim * (0.55 + 0.85 * wisps) * (0.65 + 0.55 * fine);
+    vec3 innerCol = vec3(2.3, 0.82, 0.15);
+    vec3 outerCol = vec3(1.2, 0.24, 0.035);
+    vec3 col = mix(innerCol, outerCol, clamp(u_layer_id * 0.45 + (1.0 - wisps) * 0.35, 0.0, 1.0));
+    float layerGain = mix(0.46, 0.20, clamp(u_layer_id * 0.45, 0.0, 1.0));
+    fragColor = vec4(col * intensity * layerGain, 1.0);
+}`
+    },
+
+    coronaVol: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_quad;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_sun_center;
+uniform vec3 u_cam_right;
+uniform vec3 u_cam_up;
+uniform float u_billboard_radius;
+out vec2 v_uv;
+out vec3 v_world_pos;
+
+void main() {
+    v_uv = in_quad;
+    vec3 worldPos = u_sun_center
+                  + u_cam_right * (in_quad.x * u_billboard_radius)
+                  + u_cam_up    * (in_quad.y * u_billboard_radius);
+    v_world_pos = worldPos;
+    gl_Position = u_proj * u_view * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + GLSL_NOISE_LIB + `
+in vec2 v_uv;
+in vec3 v_world_pos;
+uniform vec3 u_sun_center;
+uniform vec3 u_cam_pos;
+uniform float u_sun_radius;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    float rNorm = length(v_uv);
+    if (rNorm >= 1.0) discard;
+    vec3 ro = u_cam_pos;
+    vec3 rd = normalize(v_world_pos - u_cam_pos);
+    vec3 oc = u_sun_center - ro;
+    float tca = dot(oc, rd);
+    float d2 = dot(oc, oc) - tca * tca;
+    float b = sqrt(max(d2, 0.0));
+    float rRatio = b / u_sun_radius;
+
+    vec3 closestPt = ro + rd * tca;
+    vec3 radialDir = normalize(closestPt - u_sun_center + vec3(1e-5));
+    float angle = atan(v_uv.y, v_uv.x);
+
+    float outsideSun = smoothstep(0.95, 1.05, rRatio);
+    float frontHaze = (1.0 - smoothstep(0.0, 1.15, rRatio)) * 0.04;
+
+    float radialOutflow = rRatio * 0.55 - u_time * 0.24;
+    float streamerA = ridgedFbm3(vec3(radialDir.xy * 3.6, radialOutflow));
+    float streamerB = fbm3(radialDir * 5.0 + vec3(radialOutflow * 0.85, -u_time * 0.14, u_time * 0.11));
+
+    float rayAngle1 = snoise(vec3(cos(angle) * 4.2, sin(angle) * 4.2, u_time * 0.16 - rRatio * 0.18));
+    float rayAngle2 = snoise(vec3(cos(angle) * 10.5, sin(angle) * 10.5, -u_time * 0.22 + rRatio * 0.14));
+    float rays = pow(clamp(0.52 + 0.36 * rayAngle1 + 0.24 * rayAngle2, 0.0, 1.0), 2.1);
+
+    float eqWeight = 0.62 + 0.58 * (1.0 - abs(radialDir.y));
+    float distAboveLimb = max(rRatio - 0.98, 0.0);
+    float innerK = exp(-distAboveLimb * 5.2) * 1.42;
+    float midStreamers = exp(-distAboveLimb * 1.90) * (0.35 + 1.05 * streamerA * eqWeight) * (0.45 + 0.85 * rays);
+    float outerF = exp(-distAboveLimb * 0.86) * (0.22 + 0.45 * (streamerB * 0.5 + 0.5)) * 0.35;
+    float edgeFade = 1.0 - smoothstep(0.45, 1.0, rNorm);
+
+    vec3 colInner = vec3(3.25, 1.62, 0.46);
+    vec3 colMid   = vec3(2.15, 0.58, 0.10);
+    vec3 colOuter = vec3(0.88, 0.18, 0.035);
+    vec3 corona = colInner * innerK + colMid * midStreamers * 0.88 + colOuter * outerF * 0.85;
+    corona = corona * outsideSun + vec3(1.1, 0.40, 0.09) * frontHaze;
+    corona *= edgeFade;
+    fragColor = vec4(max(corona, vec3(0.0)), 1.0);
+}`
+    },
+
+    coronalLoops: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec3 in_center;
+layout(location = 1) in vec3 in_radial;
+layout(location = 2) in vec3 in_tangent;
+layout(location = 3) in vec3 in_uvr;
+layout(location = 4) in vec4 in_params;
+
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_sun_center;
+uniform float u_time;
+uniform vec3 u_mouse_ray_o;
+uniform vec3 u_mouse_ray_d;
+uniform float u_mouse_strength;
+uniform float u_mouse_mode;
+uniform float u_pulse_age;
+
+out vec3 v_world_pos;
+out vec3 v_normal;
+out float v_u;
+out float v_v;
+out vec4 v_params;
+out float v_boost;
+
+void main() {
+    float u = in_uvr.x, v = in_uvr.y, baseR = in_uvr.z;
+    float phase = in_params.x, speed = in_params.y, twistRate = in_params.z;
+    float archEnv = sin(u * 3.14159265);
+    vec3 fromSun = normalize(in_center - u_sun_center);
+    float breath = 1.0 + 0.11 * sin(u_time * speed * 0.85 + phase) * archEnv;
+    vec3 binorm = normalize(cross(in_tangent, fromSun + vec3(1e-4)));
+    float sway = 0.16 * sin(u_time * speed * 1.15 + u * 6.28318 + phase) * archEnv * archEnv;
+    vec3 animatedCenter = u_sun_center + (in_center - u_sun_center) * breath + binorm * sway;
+
+    // Magnetic mouse attraction / repulsion bends coronal plasma arches toward your cursor!
+    float proj = max(dot(animatedCenter - u_mouse_ray_o, u_mouse_ray_d), 1.0);
+    vec3 closest = u_mouse_ray_o + u_mouse_ray_d * proj;
+    vec3 toRay = closest - animatedCenter;
+    float d = length(toRay);
+    float magGain = (u_mouse_mode > 1.5) ? 2.4 : 1.0;
+    float signDir = (u_mouse_mode > 0.5 && u_mouse_mode < 1.5) ? -1.0 : 1.0;
+    float pull = exp(-d * d * 0.032) * archEnv * u_mouse_strength * magGain;
+    animatedCenter += normalize(toRay + vec3(1e-4)) * (pull * 1.85 * signDir);
+
+    float pulseBoost = (u_pulse_age > 0.0 && u_pulse_age < 2.8)
+        ? exp(-u_pulse_age * 1.4) * archEnv : 0.0;
+    animatedCenter += fromSun * (pulseBoost * 0.85);
+
+    float twistAngle = u * twistRate * 6.28318 + u_time * speed * 1.45 + phase;
+    vec3 n1 = normalize(in_radial);
+    vec3 n2 = normalize(cross(in_tangent, n1));
+    vec3 twistedDir = cos(twistAngle) * n1 + sin(twistAngle) * n2;
+    float pulseSwell = 1.0 + 0.25 * sin(u * 14.0 - u_time * speed * 4.5 + phase) * archEnv + pull * 0.45 + pulseBoost * 0.5;
+    float r = baseR * (0.50 + 0.60 * archEnv) * pulseSwell;
+
+    vec3 worldPos = animatedCenter + twistedDir * r;
+    v_world_pos = worldPos;
+    v_normal = twistedDir;
+    v_u = u;
+    v_v = v;
+    v_params = in_params;
+    v_boost = clamp(pull + pulseBoost * 1.4, 0.0, 2.0);
+    gl_Position = u_proj * u_view * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + GLSL_NOISE_LIB + `
+in vec3 v_world_pos;
+in vec3 v_normal;
+in float v_u;
+in float v_v;
+in vec4 v_params;
+in float v_boost;
+uniform vec3 u_cam_pos;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    vec3 N = normalize(v_normal);
+    vec3 V = normalize(u_cam_pos - v_world_pos);
+    float coreAlign = abs(dot(N, V));
+    float phase = v_params.x, speed = v_params.y, twist = v_params.z;
+
+    float flow1 = fract(v_u * 2.5 - u_time * speed * 0.42 + phase * 0.159);
+    float flow2 = fract(v_u * 3.8 + u_time * speed * 0.31 + phase * 0.271);
+    float surge1 = exp(-pow((flow1 - 0.5) * 4.8, 2.0));
+    float surge2 = exp(-pow((flow2 - 0.5) * 5.6, 2.0));
+
+    float strandAng = (v_v + v_u * twist * 0.5) * 6.28318 * 3.0;
+    float braids = 0.50 + 0.50 * sin(strandAng - u_time * speed * 2.2 + phase);
+    float turb = ridgedFbm3(vec3(v_u * 7.5, v_v * 3.5, u_time * 0.45 + phase));
+    float footFade = smoothstep(0.0, 0.08, v_u) * (1.0 - smoothstep(0.92, 1.0, v_u));
+
+    float radialProfile = pow(coreAlign, 1.45);
+    float hotCore = pow(coreAlign, 3.6) * (0.40 + 0.95 * surge1 + 0.70 * surge2);
+    float energy = (0.34 + 0.65 * surge1 + 0.48 * surge2) * braids * (0.50 + 0.80 * turb);
+    float loopPulse = 0.72 + 0.35 * sin(u_time * speed * 0.65 + phase * 2.1);
+
+    vec3 sheathCol = vec3(1.82, 0.34, 0.04);
+    vec3 plasmaCol = vec3(2.95, 1.32, 0.30);
+    vec3 color = sheathCol * radialProfile * energy * 0.92 + plasmaCol * hotCore * (0.52 + 0.48 * turb);
+    color *= footFade * loopPulse * (0.56 + 0.78 * v_boost);
+    fragColor = vec4(max(color, vec3(0.0)), 1.0);
+}`
+    },
+
+    solarFlares: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec3 in_anchor;
+layout(location = 1) in vec3 in_tangent;
+layout(location = 2) in vec4 in_params;
+layout(location = 3) in vec3 in_visual;
+
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_sun_center;
+uniform float u_sun_radius;
+uniform float u_time;
+uniform float u_viewport_h;
+uniform vec3 u_mouse_ray_o;
+uniform vec3 u_mouse_ray_d;
+uniform float u_mouse_strength;
+uniform float u_mouse_mode;
+uniform vec3 u_pulse_pos;
+uniform float u_pulse_age;
+
+out float v_life;
+out float v_temp;
+out float v_seed;
+out float v_excite;
+
+void main() {
+    float phase = in_params.x, duration = in_params.y;
+    float speed = in_params.z, curveStrength = in_params.w;
+    float age = fract((u_time + phase) / duration);
+    float tSec = age * duration;
+
+    float rotAng = u_time * 0.055;
+    float cr = cos(rotAng), sr = sin(rotAng);
+    vec3 anchor = normalize(vec3(cr * in_anchor.x + sr * in_anchor.z, in_anchor.y, -sr * in_anchor.x + cr * in_anchor.z));
+    vec3 tang   = normalize(vec3(cr * in_tangent.x + sr * in_tangent.z, in_tangent.y, -sr * in_tangent.x + cr * in_tangent.z));
+    vec3 binorm = normalize(cross(anchor, tang + vec3(1e-4)));
+
+    float radialDist = speed * (tSec * 0.72 + 0.16 * tSec * tSec * (1.0 - 0.35 * age));
+    float arcBend = curveStrength * sin(age * 3.14159265 * 0.90) * (1.0 + 0.80 * age) * radialDist * 0.62;
+    float helixPhase = age * 15.0 + phase * 11.3;
+    float helixR = in_visual.z * (0.08 + 0.92 * age * age);
+    vec3 helixOffset = (cos(helixPhase) * binorm + sin(helixPhase) * tang) * helixR;
+
+    float escapeBias = smoothstep(0.95, 2.35, speed);
+    float height = mix(sin(age * 3.14159) * radialDist * 0.62, radialDist, escapeBias);
+
+    vec3 worldPos = u_sun_center + anchor * (u_sun_radius * 0.995 + height) + tang * arcBend + helixOffset;
+
+    // Real-time 3D cursor magnetic field & shockwave deflection on solar flare jets
+    float proj = max(dot(worldPos - u_mouse_ray_o, u_mouse_ray_d), 1.0);
+    vec3 closest = u_mouse_ray_o + u_mouse_ray_d * proj;
+    vec3 toRay = closest - worldPos;
+    float d = length(toRay);
+    float influence = exp(-d * d * 0.018) * u_mouse_strength * (0.35 + 0.95 * age);
+    vec3 swirlDir = normalize(cross(u_mouse_ray_d, toRay + vec3(1e-4)));
+    float excite = influence;
+
+    if (u_mouse_mode < 0.5) {
+        // Gravity Swirl
+        worldPos += normalize(toRay + vec3(1e-4)) * (influence * 1.9) + swirlDir * (influence * 2.4);
+    } else if (u_mouse_mode < 1.5) {
+        // Repel Wave
+        worldPos -= normalize(toRay + vec3(1e-4)) * (influence * 3.6);
+    } else {
+        // Solar Magnet: pulls long dramatic solar plasma tendrils toward cursor!
+        float widePull = exp(-d * d * 0.0075) * u_mouse_strength * (0.45 + 1.15 * age);
+        worldPos += normalize(toRay + vec3(1e-4)) * (widePull * 4.8) + swirlDir * (widePull * 1.4);
+        excite = max(excite, widePull * 1.4);
+    }
+
+    if (u_pulse_age > 0.0 && u_pulse_age < 3.6) {
+        vec3 fromP = worldPos - u_pulse_pos;
+        float dp = length(fromP);
+        float front = u_pulse_age * 20.0;
+        float ring = exp(-pow((dp - front) * 0.35, 2.0)) * exp(-u_pulse_age * 0.95);
+        worldPos += normalize(fromP + vec3(1e-4)) * (ring * 3.2);
+        excite += ring * 1.8;
+    }
+
+    vec4 viewPos = u_view * vec4(worldPos, 1.0);
+    gl_Position = u_proj * viewPos;
+
+    float depth = max(-viewPos.z, 0.5);
+    float sizeScale = mix(0.65, 1.60, pow(age, 0.7)) * (1.0 - 0.35 * pow(age, 2.2)) * (1.0 + 0.45 * min(excite, 1.5));
+    gl_PointSize = clamp((in_visual.x * sizeScale * u_viewport_h) / (depth * 1.55), 1.4, 28.0);
+
+    v_life = age;
+    v_temp = in_visual.y;
+    v_seed = phase;
+    v_excite = clamp(excite, 0.0, 2.2);
+}`,
+      fs: GLSL_HEADER + `
+in float v_life;
+in float v_temp;
+in float v_seed;
+in float v_excite;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    vec2 p = gl_PointCoord * 2.0 - 1.0;
+    float r2 = dot(p, p);
+    if (r2 > 1.0) discard;
+    float core = exp(-r2 * 10.0);
+    float halo = pow(1.0 - r2, 2.8) * 0.45;
+    float fadeIn = smoothstep(0.0, 0.08, v_life);
+    float fadeOut = pow(1.0 - smoothstep(0.16, 1.0, v_life), 1.85);
+    float flicker = 0.80 + 0.25 * sin(u_time * 9.5 + v_seed * 23.0 + v_life * 18.0);
+    float cool = clamp(v_life * 1.15 + (1.0 - v_temp) * 0.25 - v_excite * 0.35, 0.0, 1.0);
+    vec3 cHot = vec3(4.1, 2.85, 1.35);
+    vec3 cMid = vec3(2.45, 0.78, 0.12);
+    vec3 cCool = vec3(1.08, 0.13, 0.018);
+    vec3 col = cool < 0.45 ? mix(cHot, cMid, cool / 0.45) : mix(cMid, cCool, (cool - 0.45) / 0.55);
+    fragColor = vec4(col * (core + halo) * fadeIn * fadeOut * flicker * (1.28 + 0.85 * v_excite), 1.0);
+}`
+    },
+
+    galaxyStars: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec3 in_cyl;
+layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec4 in_props;
+
+uniform mat4 u_model;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform float u_time;
+uniform float u_viewport_h;
+uniform vec3 u_mouse_ray_o;
+uniform vec3 u_mouse_ray_d;
+uniform float u_mouse_strength;
+uniform float u_mouse_mode;
+uniform vec3 u_pulse_pos;
+uniform float u_pulse_age;
+
+out vec3 v_color;
+out float v_twinkle;
+out float v_lum;
+out float v_excite;
+
+void main() {
+    float r = in_cyl.x, baseAng = in_cyl.y, ly = in_cyl.z;
+    float omega = 0.52 / pow(r + 1.55, 1.08);
+    float ang = baseAng + u_time * omega;
+    float yOsc = ly + 0.06 * sin(u_time * 0.35 + in_props.y + r * 0.4);
+    vec3 localPos = vec3(r * cos(ang), yOsc, r * sin(ang));
+    vec3 worldPos = (u_model * vec4(localPos, 1.0)).xyz;
+
+    // Live 3D Mouse Gravity Swirl / Bow-Shock Repel Field on all 70,000 stars!
+    float proj = max(dot(worldPos - u_mouse_ray_o, u_mouse_ray_d), 2.0);
+    vec3 closest = u_mouse_ray_o + u_mouse_ray_d * proj;
+    vec3 toRay = closest - worldPos;
+    float dist = length(toRay);
+    float distScale = 0.014;
+    float falloff = exp(-dist * dist * distScale) * u_mouse_strength;
+    vec3 dirToRay = toRay / max(dist, 0.05);
+    vec3 swirlVec = normalize(cross(u_mouse_ray_d, dirToRay + vec3(1e-4)));
+    float excite = 0.0;
+
+    if (u_mouse_mode < 0.5) {
+        // Gravity Swirl: stars vortex around your cursor ray and brighten with lensing energy
+        float vortex = falloff * (1.0 - exp(-dist * 0.55));
+        worldPos += swirlVec * (vortex * 3.85) + dirToRay * (falloff * 1.45)
+                  + u_mouse_ray_d * (-falloff * 1.35);
+        excite = falloff * 1.35;
+    } else if (u_mouse_mode < 1.5) {
+        // Repel Wave: clears a shimmering magnetic cavity around your cursor!
+        worldPos -= dirToRay * (falloff * 5.6) + swirlVec * (falloff * 1.1);
+        excite = falloff * 1.45;
+    } else {
+        // Solar Magnet: gentle star ripple while main force drives solar plasma
+        worldPos += swirlVec * (falloff * 1.25);
+        excite = falloff * 0.65;
+    }
+
+    // Expanding 3D Click Shockwave across the entire spiral galaxy
+    if (u_pulse_age > 0.0 && u_pulse_age < 4.0) {
+        vec3 fromP = worldPos - u_pulse_pos;
+        float dp = length(fromP);
+        float front = u_pulse_age * 24.0;
+        float ring = exp(-pow((dp - front) * 0.28, 2.0)) * exp(-u_pulse_age * 0.85);
+        worldPos += normalize(fromP + vec3(1e-4)) * (ring * 3.8);
+        excite += ring * 2.2;
+    }
+
+    vec4 viewPos = u_view * vec4(worldPos, 1.0);
+    gl_Position = u_proj * viewPos;
+
+    float tw1 = sin(u_time * in_props.z + in_props.y);
+    float tw2 = sin(u_time * in_props.z * 2.17 + in_props.y * 1.73);
+    float twinkle = 0.78 + 0.17 * tw1 + 0.09 * tw2;
+
+    float depth = max(-viewPos.z, 1.0);
+    float pSize = (in_props.x * u_viewport_h) / (depth * 1.85);
+    gl_PointSize = clamp(pSize * (0.90 + 0.16 * twinkle + 0.55 * min(excite, 1.8)), 1.1, 15.0);
+
+    v_color = in_color;
+    v_twinkle = twinkle;
+    v_lum = in_props.w;
+    v_excite = clamp(excite, 0.0, 2.5);
+}`,
+      fs: GLSL_HEADER + `
+in vec3 v_color;
+in float v_twinkle;
+in float v_lum;
+in float v_excite;
+out vec4 fragColor;
+
+void main() {
+    vec2 p = gl_PointCoord * 2.0 - 1.0;
+    float r2 = dot(p, p);
+    if (r2 > 1.0) discard;
+    float core = exp(-r2 * 17.5);
+    float halo = exp(-r2 * 4.2) * 0.36;
+    float spikeStrength = smoothstep(1.45, 2.9, v_lum + v_excite * 1.25);
+    float spX = exp(-abs(p.y) * 16.0) * exp(-abs(p.x) * 3.0);
+    float spY = exp(-abs(p.x) * 16.0) * exp(-abs(p.y) * 3.0);
+    float spikes = (spX + spY) * 0.50 * spikeStrength;
+    float intensity = (core + halo + spikes) * (v_lum + v_excite * 1.65) * v_twinkle * 0.64;
+    vec3 exciteTint = mix(v_color, vec3(0.75, 0.94, 1.35), clamp(v_excite * 0.45, 0.0, 0.65));
+    vec3 starCol = mix(exciteTint, vec3(1.0, 0.99, 0.97), clamp(core * 0.34, 0.0, 0.48));
+    fragColor = vec4(starCol * intensity, 1.0);
+}`
+    },
+
+    nebula: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_quad;
+layout(location = 1) in vec3 in_cyl;
+layout(location = 2) in vec3 in_color;
+layout(location = 3) in vec4 in_props;
+
+uniform mat4 u_model;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_cam_right;
+uniform vec3 u_cam_up;
+uniform float u_time;
+uniform vec3 u_mouse_ray_o;
+uniform vec3 u_mouse_ray_d;
+uniform float u_mouse_strength;
+uniform float u_mouse_mode;
+uniform vec3 u_pulse_pos;
+uniform float u_pulse_age;
+
+out vec2 v_uv;
+out vec3 v_color;
+out vec3 v_seed_data;
+out float v_excite;
+
+void main() {
+    float r = in_cyl.x, baseAng = in_cyl.y, ly = in_cyl.z;
+    float omega = 0.52 / pow(r + 1.55, 1.08);
+    float ang = baseAng + u_time * omega;
+    vec3 worldCenter = (u_model * vec4(r * cos(ang), ly, r * sin(ang), 1.0)).xyz;
+
+    float proj = max(dot(worldCenter - u_mouse_ray_o, u_mouse_ray_d), 2.0);
+    vec3 closest = u_mouse_ray_o + u_mouse_ray_d * proj;
+    vec3 toRay = closest - worldCenter;
+    float dist = length(toRay);
+    float falloff = exp(-dist * dist * 0.011) * u_mouse_strength;
+    vec3 dirToRay = toRay / max(dist, 0.05);
+    vec3 swirlVec = normalize(cross(u_mouse_ray_d, dirToRay + vec3(1e-4)));
+
+    if (u_mouse_mode < 0.5) {
+        worldCenter += swirlVec * (falloff * 2.2) + dirToRay * (falloff * 0.8);
+    } else if (u_mouse_mode < 1.5) {
+        worldCenter -= dirToRay * (falloff * 3.4);
+    }
+
+    float pulseBoost = 0.0;
+    if (u_pulse_age > 0.0 && u_pulse_age < 4.0) {
+        float dp = length(worldCenter - u_pulse_pos);
+        float front = u_pulse_age * 24.0;
+        pulseBoost = exp(-pow((dp - front) * 0.24, 2.0)) * exp(-u_pulse_age * 0.85);
+    }
+
+    float rot = in_props.y + u_time * (0.025 + 0.015 * fract(in_props.z)) + falloff * 0.65;
+    float c = cos(rot), s = sin(rot);
+    vec2 rotQuad = vec2(c * in_quad.x - s * in_quad.y, s * in_quad.x + c * in_quad.y);
+    float sz = in_props.x * (1.0 + 0.18 * falloff + 0.25 * pulseBoost);
+    vec3 worldPos = worldCenter + u_cam_right * (rotQuad.x * sz) + u_cam_up * (rotQuad.y * sz);
+    v_uv = in_quad;
+    v_color = in_color;
+    v_seed_data = vec3(in_props.z, in_props.w, r / 25.5);
+    v_excite = clamp(falloff * 0.85 + pulseBoost * 1.4, 0.0, 2.0);
+    gl_Position = u_proj * u_view * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + GLSL_NOISE_LIB + `
+in vec2 v_uv;
+in vec3 v_color;
+in vec3 v_seed_data;
+in float v_excite;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    float r = length(v_uv);
+    if (r >= 1.0) discard;
+    float seed = v_seed_data.x, opacity = v_seed_data.y;
+    vec3 p = vec3(v_uv * 2.05, seed * 7.31 + u_time * 0.042);
+    vec2 w = vec2(snoise(p + vec3(1.7, -2.3, 0.4)), snoise(p + vec3(-3.1, 1.9, -1.2)));
+    vec3 wp = p + vec3(w * 0.58, 0.0);
+    float n1 = fbm3(wp) * 0.5 + 0.5;
+    float n2 = fbm3(wp * 2.15 + vec3(3.7, -2.4, u_time * 0.025)) * 0.5 + 0.5;
+    float radial = pow(1.0 - smoothstep(0.02, 1.0, r), 2.55);
+    float cloud = smoothstep(0.24, 0.88, n1 * 0.66 + n2 * 0.44);
+    float density = radial * cloud;
+    vec3 knotCol = mix(v_color * 0.88, v_color * 1.42 + vec3(0.12, 0.08, 0.16), smoothstep(0.35, 0.85, n2) * 0.55);
+    fragColor = vec4(max(knotCol * density * opacity * (1.0 + 0.65 * v_excite), vec3(0.0)), 1.0);
+}`
+    },
+
+    dust: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_quad;
+layout(location = 1) in vec3 in_cyl;
+layout(location = 2) in vec3 in_tint;
+layout(location = 3) in vec4 in_props;
+
+uniform mat4 u_model;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_cam_right;
+uniform vec3 u_cam_up;
+uniform float u_time;
+
+out vec2 v_uv;
+out vec3 v_tint;
+out vec3 v_seed_data;
+
+void main() {
+    float r = in_cyl.x, baseAng = in_cyl.y, ly = in_cyl.z;
+    float omega = 0.52 / pow(r + 1.55, 1.08);
+    float ang = baseAng + u_time * omega;
+    vec3 worldCenter = (u_model * vec4(r * cos(ang), ly, r * sin(ang), 1.0)).xyz;
+    float rot = in_props.y + u_time * 0.018;
+    float c = cos(rot), s = sin(rot);
+    vec2 rotQuad = vec2(c * in_quad.x - s * in_quad.y, s * in_quad.x + c * in_quad.y);
+    float sz = in_props.x;
+    vec3 worldPos = worldCenter + u_cam_right * (rotQuad.x * sz) + u_cam_up * (rotQuad.y * sz);
+    v_uv = in_quad;
+    v_tint = in_tint;
+    v_seed_data = vec3(in_props.z, in_props.w, r / 25.5);
+    gl_Position = u_proj * u_view * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + GLSL_NOISE_LIB + `
+in vec2 v_uv;
+in vec3 v_tint;
+in vec3 v_seed_data;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    float r = length(v_uv);
+    if (r >= 1.0) discard;
+    float seed = v_seed_data.x, opticalDepth = v_seed_data.y;
+    vec3 p = vec3(v_uv * 2.75, seed * 9.17 + u_time * 0.025);
+    vec2 w = vec2(snoise(p + vec3(2.1, -1.4, 0.0)), snoise(p + vec3(-1.8, 3.2, 0.5)));
+    vec3 wp = p + vec3(w * 0.45, 0.0);
+    float n = fbm3(wp) * 0.5 + 0.5;
+    float clump = ridgedFbm3(wp * 1.55);
+    float radial = pow(1.0 - smoothstep(0.08, 1.0, r), 2.15);
+    float alpha = radial * smoothstep(0.28, 0.86, n * 0.62 + clump * 0.48) * opticalDepth;
+    if (alpha < 0.004) discard;
+    float edgeScatter = smoothstep(0.32, 0.78, r) * (1.0 - smoothstep(0.78, 1.0, r));
+    vec3 dustCol = v_tint * (0.08 + 0.44 * edgeScatter);
+    fragColor = vec4(dustCol, clamp(alpha, 0.0, 0.62));
+}`
+    },
+
+    galaxyCore: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_quad;
+uniform mat4 u_model;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_cam_right;
+uniform vec3 u_cam_up;
+uniform float u_core_radius;
+out vec2 v_uv;
+
+void main() {
+    vec3 worldCenter = (u_model * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vec3 worldPos = worldCenter + u_cam_right * (in_quad.x * u_core_radius) + u_cam_up * (in_quad.y * u_core_radius);
+    v_uv = in_quad;
+    gl_Position = u_proj * u_view * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + GLSL_NOISE_LIB + `
+in vec2 v_uv;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    float rRaw = length(v_uv);
+    if (rRaw >= 1.0) discard;
+    float ca = cos(-0.32), sa = sin(-0.32);
+    vec2 rotUv = vec2(ca * v_uv.x - sa * v_uv.y, sa * v_uv.x + ca * v_uv.y);
+    vec2 ellUv = vec2(rotUv.x * 0.76, rotUv.y * 1.26);
+    float r = length(ellUv);
+    float swirl = fbm3(vec3(ellUv * 3.8, u_time * 0.035)) * 0.5 + 0.5;
+    float nucleus = exp(-r * r * 54.0) * 1.15;
+    float bulge   = exp(-r * 6.0) * (0.44 + 0.18 * swirl);
+    float outer   = pow(1.0 - smoothstep(0.0, 1.0, min(r, 1.0)), 3.5) * (0.14 + 0.10 * swirl);
+    vec3 col = vec3(2.55, 2.02, 1.32) * nucleus + vec3(1.18, 0.62, 0.24) * bulge + vec3(0.36, 0.16, 0.54) * outer;
+    col *= 1.0 - smoothstep(0.54, 1.0, rRaw);
+    fragColor = vec4(max(col, vec3(0.0)), 1.0);
+}`
+    },
+
+    deepStars: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec3 in_pos;
+layout(location = 1) in vec3 in_color;
+layout(location = 2) in vec4 in_props;
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform float u_time;
+uniform float u_viewport_h;
+out vec3 v_color;
+out float v_lum;
+
+void main() {
+    mat4 viewNoTrans = u_view;
+    viewNoTrans[3] = vec4(u_view[3].xyz * 0.04, 1.0);
+    gl_Position = u_proj * (viewNoTrans * vec4(in_pos, 1.0));
+    float tw = 0.78 + 0.22 * sin(u_time * in_props.z + in_props.y);
+    gl_PointSize = clamp(in_props.x * (u_viewport_h / 1080.0) * (0.92 + 0.12 * tw), 1.0, 8.0);
+    v_color = in_color;
+    v_lum = in_props.w * tw;
+}`,
+      fs: GLSL_HEADER + `
+in vec3 v_color;
+in float v_lum;
+out vec4 fragColor;
+
+void main() {
+    vec2 p = gl_PointCoord * 2.0 - 1.0;
+    float r2 = dot(p, p);
+    if (r2 > 1.0) discard;
+    float shape = exp(-r2 * 10.5) + exp(-r2 * 3.0) * 0.25;
+    fragColor = vec4(v_color * shape * v_lum, 1.0);
+}`
+    },
+
+    distantGalaxies: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_quad;
+layout(location = 1) in vec3 in_pos;
+layout(location = 2) in vec3 in_color;
+layout(location = 3) in vec4 in_shape;
+layout(location = 4) in vec4 in_detail;
+
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform vec3 u_cam_right;
+uniform vec3 u_cam_up;
+
+out vec2 v_uv;
+out vec3 v_color;
+out vec4 v_shape;
+out vec4 v_detail;
+
+void main() {
+    float sz = in_shape.x, rot = in_shape.y;
+    float c = cos(rot), s = sin(rot);
+    vec2 rQuad = vec2(c * in_quad.x - s * in_quad.y, s * in_quad.x + c * in_quad.y);
+    mat4 viewFar = u_view;
+    viewFar[3] = vec4(u_view[3].xyz * 0.06, 1.0);
+    vec3 worldPos = in_pos + u_cam_right * (rQuad.x * sz) + u_cam_up * (rQuad.y * sz);
+    v_uv = in_quad;
+    v_color = in_color;
+    v_shape = in_shape;
+    v_detail = in_detail;
+    gl_Position = u_proj * viewFar * vec4(worldPos, 1.0);
+}`,
+      fs: GLSL_HEADER + `
+in vec2 v_uv;
+in vec3 v_color;
+in vec4 v_shape;
+in vec4 v_detail;
+uniform float u_time;
+out vec4 fragColor;
+
+void main() {
+    float tilt = max(v_shape.z, 0.24);
+    float galType = v_shape.w;
+    float armCount = v_detail.x, winding = v_detail.y;
+    float brightness = v_detail.z, seed = v_detail.w;
+    vec2 p = vec2(v_uv.x, v_uv.y / tilt);
+    float r = length(p);
+    if (r >= 1.0) discard;
+    float core = exp(-r * r * 36.0) * 1.45;
+    float bulge = exp(-r * 6.2) * 0.72;
+    vec3 coreCol = vec3(1.35, 1.15, 0.85);
+    vec3 col = vec3(0.0);
+    if (galType < 0.68) {
+        float theta = atan(p.y, p.x) + u_time * 0.015 * (seed > 0.5 ? 1.0 : -1.0);
+        float logSpiral = armCount * (theta - winding * log(r + 0.08));
+        float arms = pow(0.5 + 0.5 * cos(logSpiral), 2.4);
+        float armMask = exp(-r * 2.9) * smoothstep(0.04, 0.24, r) * (1.0 - smoothstep(0.45, 1.0, r));
+        float knot = 0.75 + 0.45 * sin(logSpiral * 2.0 + r * 18.0 + seed * 12.0);
+        float disk = exp(-r * 3.8) * 0.25;
+        col = coreCol * (core + bulge * 0.85) + v_color * (arms * armMask * knot * 1.30 + disk);
+    } else {
+        float sersic = exp(-pow(r * 3.8, 0.85));
+        col = mix(v_color, coreCol, exp(-r * 3.2)) * (core * 0.9 + sersic * 0.85);
+    }
+    float edge = 1.0 - smoothstep(0.70, 1.0, r);
+    fragColor = vec4(col * brightness * edge, 1.0);
+}`
+    },
+
+    bloomPrefilter: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_pos;
+out vec2 v_uv;
+void main() {
+    v_uv = in_pos * 0.5 + 0.5;
+    gl_Position = vec4(in_pos, 0.0, 1.0);
+}`,
+      fs: GLSL_HEADER + `
+in vec2 v_uv;
+uniform sampler2D u_scene_tex;
+uniform float u_threshold;
+uniform float u_knee;
+out vec4 fragColor;
+
+void main() {
+    vec2 ts = 1.0 / vec2(textureSize(u_scene_tex, 0));
+    vec3 c = 0.25 * (
+        texture(u_scene_tex, v_uv + ts * vec2(-0.5, -0.5)).rgb +
+        texture(u_scene_tex, v_uv + ts * vec2( 0.5, -0.5)).rgb +
+        texture(u_scene_tex, v_uv + ts * vec2(-0.5,  0.5)).rgb +
+        texture(u_scene_tex, v_uv + ts * vec2( 0.5,  0.5)).rgb
+    );
+    c = min(c, vec3(18.0));
+    float br = max(c.r, max(c.g, c.b));
+    float soft = clamp(br - u_threshold + u_knee, 0.0, 2.0 * u_knee);
+    soft = (soft * soft) / max(4.0 * u_knee + 1e-5, 1e-5);
+    float contrib = max(soft, br - u_threshold) / max(br, 1e-5);
+    fragColor = vec4(c * contrib, 1.0);
+}`
+    },
+
+    bloomBlur: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_pos;
+out vec2 v_uv;
+void main() {
+    v_uv = in_pos * 0.5 + 0.5;
+    gl_Position = vec4(in_pos, 0.0, 1.0);
+}`,
+      fs: GLSL_HEADER + `
+in vec2 v_uv;
+uniform sampler2D u_tex;
+uniform vec2 u_direction;
+out vec4 fragColor;
+
+void main() {
+    float weights[5] = float[5](0.22702703, 0.19459459, 0.12162162, 0.05405405, 0.01621622);
+    float offsets[5] = float[5](0.0, 1.38461538, 3.23076923, 5.07692308, 6.92307692);
+    vec3 result = texture(u_tex, v_uv).rgb * weights[0];
+    for (int i = 1; i < 5; ++i) {
+        vec2 off = u_direction * offsets[i];
+        result += texture(u_tex, v_uv + off).rgb * weights[i];
+        result += texture(u_tex, v_uv - off).rgb * weights[i];
+    }
+    fragColor = vec4(result, 1.0);
+}`
+    },
+
+    composite: {
+      vs: GLSL_HEADER + `
+layout(location = 0) in vec2 in_pos;
+out vec2 v_uv;
+void main() {
+    v_uv = in_pos * 0.5 + 0.5;
+    gl_Position = vec4(in_pos, 0.0, 1.0);
+}`,
+      fs: GLSL_HEADER + `
+in vec2 v_uv;
+uniform sampler2D u_scene_tex;
+uniform sampler2D u_bloom_0;
+uniform sampler2D u_bloom_1;
+uniform sampler2D u_bloom_2;
+uniform sampler2D u_bloom_3;
+uniform float u_bloom_strength;
+uniform float u_exposure;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse_uv;
+uniform float u_mouse_active;
+uniform float u_mouse_mode;
+uniform vec2 u_pulse_uv;
+uniform float u_pulse_age;
+out vec4 fragColor;
+
+const mat3 ACES_INPUT_MAT = mat3(
+    0.59719, 0.07600, 0.02840,
+    0.35458, 0.90834, 0.13383,
+    0.04823, 0.01566, 0.83777
+);
+const mat3 ACES_OUTPUT_MAT = mat3(
+     1.60475, -0.10208, -0.00327,
+    -0.53108,  1.10813, -0.07276,
+    -0.07367, -0.00605,  1.07602
+);
+
+vec3 acesFilmic(vec3 color) {
+    color = ACES_INPUT_MAT * color;
+    vec3 a = color * (color + 0.0245786) - 0.000090537;
+    vec3 b = color * (0.983729 * color + 0.4329510) + 0.238081;
+    color = a / b;
+    return clamp(ACES_OUTPUT_MAT * color, 0.0, 1.0);
+}
+
+float filmHash(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+void main() {
+    float aspect = u_resolution.x / max(u_resolution.y, 1.0);
+    vec2 uv = v_uv;
+
+    // Subtle gravitational lensing refraction ring around live cursor & click shockwave
+    vec2 toCursor = uv - u_mouse_uv;
+    vec2 toCursorAspect = vec2(toCursor.x * aspect, toCursor.y);
+    float cDist = length(toCursorAspect);
+    float lensStr = exp(-cDist * cDist * 42.0) * u_mouse_active * 0.0055;
+    vec2 lensOff = (cDist > 1e-4) ? (toCursor / cDist) * lensStr : vec2(0.0);
+
+    float shockHalo = 0.0;
+    if (u_pulse_age > 0.0 && u_pulse_age < 1.9) {
+        vec2 toP = uv - u_pulse_uv;
+        vec2 toPA = vec2(toP.x * aspect, toP.y);
+        float pDist = length(toPA);
+        float pFront = u_pulse_age * 0.72;
+        float pRing = exp(-pow((pDist - pFront) * 58.0, 2.0)) * exp(-u_pulse_age * 1.95);
+        lensOff += (pDist > 1e-4) ? (toP / pDist) * (pRing * 0.0085) : vec2(0.0);
+        shockHalo = pRing;
+    }
+
+    vec2 sampleUv = clamp(uv - lensOff, 0.001, 0.999);
+    vec2 centered = sampleUv - 0.5;
+    float edgeDist2 = dot(centered, centered);
+
+    vec2 caDir = centered * (0.0044 * edgeDist2);
+    float rScene = texture(u_scene_tex, clamp(sampleUv + caDir, 0.001, 0.999)).r;
+    float gScene = texture(u_scene_tex, sampleUv).g;
+    float bScene = texture(u_scene_tex, clamp(sampleUv - caDir, 0.001, 0.999)).b;
+    vec3 hdrColor = vec3(rScene, gScene, bScene);
+
+    vec3 b0 = texture(u_bloom_0, sampleUv).rgb;
+    vec3 b1 = texture(u_bloom_1, sampleUv).rgb;
+    vec3 b2 = texture(u_bloom_2, sampleUv).rgb;
+    vec3 b3 = texture(u_bloom_3, sampleUv).rgb;
+    vec3 bWideR = texture(u_bloom_2, clamp(sampleUv + caDir * 1.5, 0.001, 0.999)).rgb;
+    vec3 bWideB = texture(u_bloom_2, clamp(sampleUv - caDir * 1.5, 0.001, 0.999)).rgb;
+    vec3 b2Ca = vec3(bWideR.r, b2.g, bWideB.b);
+
+    vec3 bloom = b0 * 0.24 + b1 * 0.34 + b2Ca * 0.42 + b3 * 0.56;
+    hdrColor += bloom * u_bloom_strength;
+
+    // Subtle cosmic backdrop gradient tailored for widescreen monitors
+    vec3 deepSky = mix(vec3(0.003, 0.004, 0.012), vec3(0.010, 0.007, 0.022), smoothstep(0.0, 1.0, v_uv.y * 0.7 + v_uv.x * 0.3));
+    hdrColor += deepSky;
+
+    // Delicate physical cursor gravitational ring & click shockwave shimmer
+    if (u_mouse_active > 0.001) {
+        vec3 modeTint = (u_mouse_mode < 0.5)
+            ? vec3(0.45, 0.78, 1.35)
+            : (u_mouse_mode < 1.5 ? vec3(0.95, 0.45, 1.25) : vec3(1.55, 0.85, 0.28));
+        float einsteinRing = exp(-pow((cDist - 0.028) * 72.0, 2.0)) * 0.14;
+        float coreGlint = exp(-cDist * cDist * 1100.0) * 0.14;
+        hdrColor += modeTint * (einsteinRing + coreGlint) * u_mouse_active;
+    }
+    if (shockHalo > 0.001) {
+        vec3 shockCol = mix(vec3(0.55, 0.88, 1.55), vec3(1.75, 1.05, 0.42), clamp(u_mouse_mode * 0.5, 0.0, 1.0));
+        hdrColor += shockCol * shockHalo * 0.26;
+    }
+
+    vec3 mapped = acesFilmic(hdrColor * u_exposure);
+
+    // Aspect-independent elliptical vignette (preserves lush widescreen edges!)
+    float vig = 1.0 - smoothstep(0.42, 0.92, length(centered) * 1.22) * 0.26;
+    mapped *= vig;
+    mapped = pow(max(mapped, vec3(0.0)), vec3(1.0 / 2.2));
+
+    vec2 px = v_uv * u_resolution;
+    float tSeed = fract(u_time * 24.0) * 173.17;
+    float g1 = filmHash(px + vec2(tSeed, tSeed * 1.37));
+    float g2 = filmHash(px + vec2(-tSeed * 0.71, tSeed * 2.11));
+    float triGrain = (g1 + g2 - 1.0);
+    float luma = dot(mapped, vec3(0.2126, 0.7152, 0.0722));
+    float grainMask = mix(0.020, 0.008, smoothstep(0.05, 0.85, luma));
+    mapped += vec3(triGrain) * grainMask;
+
+    fragColor = vec4(clamp(mapped, 0.0, 1.0), 1.0);
+}`
+    }
+  };
+
+  // =========================================================================
+  // PROCEDURAL 3D GEOMETRY & ASTROPHYSICAL PARTICLE GENERATORS
+  // =========================================================================
+  function generateIcosphere(subdivisions) {
+    const phi = (1.0 + Math.sqrt(5.0)) * 0.5;
+    let verts = [
+      [-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0],
+      [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi],
+      [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1],
+    ].map(vec3Normalize);
+
+    let faces = [
+      [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+      [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+      [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+      [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+    ];
+
+    for (let s = 0; s < subdivisions; s++) {
+      const midCache = new Map();
+      const nextFaces = [];
+      const getMid = (i1, i2) => {
+        const key = i1 < i2 ? (i1 << 16) | i2 : (i2 << 16) | i1;
+        const found = midCache.get(key);
+        if (found !== undefined) return found;
+        const a = verts[i1], b = verts[i2];
+        const m = vec3Normalize([(a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5]);
+        const idx = verts.length;
+        verts.push(m);
+        midCache.set(key, idx);
+        return idx;
+      };
+      for (let i = 0; i < faces.length; i++) {
+        const [a, b, c] = faces[i];
+        const ab = getMid(a, b);
+        const bc = getMid(b, c);
+        const ca = getMid(c, a);
+        nextFaces.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]);
+      }
+      faces = nextFaces;
+    }
+
+    const vArr = new Float32Array(verts.length * 3);
+    for (let i = 0; i < verts.length; i++) {
+      vArr[i * 3] = verts[i][0];
+      vArr[i * 3 + 1] = verts[i][1];
+      vArr[i * 3 + 2] = verts[i][2];
+    }
+    const iArr = new Uint32Array(faces.length * 3);
+    for (let i = 0; i < faces.length; i++) {
+      iArr[i * 3] = faces[i][0];
+      iArr[i * 3 + 1] = faces[i][1];
+      iArr[i * 3 + 2] = faces[i][2];
+    }
+    return { verts: vArr, indices: iArr };
+  }
+
+  function generateCoronalLoops(rng) {
+    const vertsPerLoop = (LOOP_LEN_SEGS + 1) * (LOOP_RAD_SEGS + 1);
+    const trisPerLoop = LOOP_LEN_SEGS * LOOP_RAD_SEGS * 2;
+    const verts = new Float32Array(CORONAL_LOOP_COUNT * vertsPerLoop * 16);
+    const indices = new Uint32Array(CORONAL_LOOP_COUNT * trisPerLoop * 3);
+    let vOff = 0;
+    let iOff = 0;
+    let vBase = 0;
+
+    for (let l = 0; l < CORONAL_LOOP_COUNT; l++) {
+      const isHero = l < 18;
+      // Place hero loops near the limb & front-right edge facing the galaxy for dramatic silhouettes
+      let lon, lat;
+      if (isHero) {
+        const side = l % 2 === 0 ? 1 : -1;
+        lon = side * rng.uniform(0.35, 1.55) + rng.normal(0, 0.22);
+        lat = rng.uniform(-0.78, 0.85);
+      } else {
+        lon = rng.uniform(-Math.PI, Math.PI);
+        lat = rng.uniform(-0.85, 0.85);
+      }
+
+      const dir = [Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon)];
+      const upRef = Math.abs(dir[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+      const t1 = vec3Normalize(vec3Cross(upRef, dir));
+      const t2 = vec3Cross(dir, t1);
+      const orient = rng.uniform(0, Math.PI * 2);
+      const spanAxis = vec3Add(vec3Scale(t1, Math.cos(orient)), vec3Scale(t2, Math.sin(orient)));
+      const tiltAxis = vec3Cross(dir, spanAxis);
+
+      const footSep = isHero ? rng.uniform(0.24, 0.52) : rng.uniform(0.18, 0.42);
+      const apexH = isHero ? rng.uniform(0.85, 2.55) : rng.uniform(0.55, 1.85);
+      const lean = rng.uniform(-0.35, 0.35);
+      const tubeR = isHero ? rng.uniform(0.055, 0.125) : rng.uniform(0.04, 0.095);
+      const phase = rng.uniform(0, Math.PI * 2);
+      const speed = rng.uniform(0.55, 1.35);
+      const twist = rng.uniform(1.6, 4.2) * (rng.random() < 0.5 ? 1 : -1);
+
+      const footA = vec3Normalize(vec3Add(vec3Scale(dir, Math.cos(footSep)), vec3Scale(spanAxis, -Math.sin(footSep))));
+      const footB = vec3Normalize(vec3Add(vec3Scale(dir, Math.cos(footSep)), vec3Scale(spanAxis,  Math.sin(footSep))));
+      const p0 = vec3Add(SUN_CENTER, vec3Scale(footA, SUN_RADIUS * 0.97));
+      const p3 = vec3Add(SUN_CENTER, vec3Scale(footB, SUN_RADIUS * 0.97));
+      const midA = vec3Normalize(vec3Add(vec3Add(footA, vec3Scale(dir, 0.72)), vec3Scale(tiltAxis, lean)));
+      const midB = vec3Normalize(vec3Add(vec3Add(footB, vec3Scale(dir, 0.72)), vec3Scale(tiltAxis, lean)));
+      const p1 = vec3Add(SUN_CENTER, vec3Scale(midA, SUN_RADIUS + apexH * 1.15));
+      const p2 = vec3Add(SUN_CENTER, vec3Scale(midB, SUN_RADIUS + apexH * 1.15));
+
+      const evalCubic = (u) => {
+        const iu = 1 - u;
+        const b0 = iu * iu * iu, b1 = 3 * iu * iu * u, b2 = 3 * iu * u * u, b3 = u * u * u;
+        return [
+          p0[0] * b0 + p1[0] * b1 + p2[0] * b2 + p3[0] * b3,
+          p0[1] * b0 + p1[1] * b1 + p2[1] * b2 + p3[1] * b3,
+          p0[2] * b0 + p1[2] * b1 + p2[2] * b2 + p3[2] * b3,
+        ];
+      };
+      const evalTang = (u) => {
+        const iu = 1 - u;
+        const t = [
+          3 * iu * iu * (p1[0] - p0[0]) + 6 * iu * u * (p2[0] - p1[0]) + 3 * u * u * (p3[0] - p2[0]),
+          3 * iu * iu * (p1[1] - p0[1]) + 6 * iu * u * (p2[1] - p1[1]) + 3 * u * u * (p3[1] - p2[1]),
+          3 * iu * iu * (p1[2] - p0[2]) + 6 * iu * u * (p2[2] - p1[2]) + 3 * u * u * (p3[2] - p2[2]),
+        ];
+        return vec3Normalize(t);
+      };
+
+      // Parallel-transport Frenet frame along curve to avoid pinch twists
+      let prevT = evalTang(0);
+      let refN = Math.abs(prevT[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+      let prevN = vec3Normalize(vec3Cross(prevT, refN));
+
+      for (let i = 0; i <= LOOP_LEN_SEGS; i++) {
+        const u = i / LOOP_LEN_SEGS;
+        const cPos = evalCubic(u);
+        const tang = evalTang(u);
+        if (i > 0) {
+          const dotN = vec3Dot(prevN, tang);
+          prevN = vec3Normalize(vec3Sub(prevN, vec3Scale(tang, dotN)));
+        }
+        const bVec = vec3Normalize(vec3Cross(tang, prevN));
+        for (let j = 0; j <= LOOP_RAD_SEGS; j++) {
+          const v = j / LOOP_RAD_SEGS;
+          const ang = v * Math.PI * 2;
+          const radial = vec3Add(vec3Scale(prevN, Math.cos(ang)), vec3Scale(bVec, Math.sin(ang)));
+          verts[vOff++] = cPos[0]; verts[vOff++] = cPos[1]; verts[vOff++] = cPos[2];
+          verts[vOff++] = radial[0]; verts[vOff++] = radial[1]; verts[vOff++] = radial[2];
+          verts[vOff++] = tang[0]; verts[vOff++] = tang[1]; verts[vOff++] = tang[2];
+          verts[vOff++] = u; verts[vOff++] = v; verts[vOff++] = tubeR;
+          verts[vOff++] = phase; verts[vOff++] = speed; verts[vOff++] = twist; verts[vOff++] = apexH;
+        }
+      }
+
+      const ringStride = LOOP_RAD_SEGS + 1;
+      for (let i = 0; i < LOOP_LEN_SEGS; i++) {
+        for (let j = 0; j < LOOP_RAD_SEGS; j++) {
+          const a = vBase + i * ringStride + j;
+          const b = a + ringStride;
+          const c = b + 1;
+          const d = a + 1;
+          indices[iOff++] = a; indices[iOff++] = b; indices[iOff++] = c;
+          indices[iOff++] = a; indices[iOff++] = c; indices[iOff++] = d;
+        }
+      }
+      vBase += vertsPerLoop;
+    }
+    return { verts, indices };
+  }
+
+  function generateSolarFlareParticles(rng) {
+    const numJets = 20;
+    const jets = [];
+    for (let j = 0; j < numJets; j++) {
+      const lon = j < 12 ? rng.uniform(-1.7, 1.8) : rng.uniform(-Math.PI, Math.PI);
+      const lat = rng.uniform(-0.82, 0.88);
+      const anchor = [Math.cos(lat) * Math.sin(lon), Math.sin(lat), Math.cos(lat) * Math.cos(lon)];
+      const upRef = Math.abs(anchor[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+      const t1 = vec3Normalize(vec3Cross(upRef, anchor));
+      const t2 = vec3Cross(anchor, t1);
+      const az = rng.uniform(0, Math.PI * 2);
+      const tangent = vec3Normalize(vec3Add(vec3Scale(t1, Math.cos(az)), vec3Scale(t2, Math.sin(az))));
+      jets.push({
+        anchor,
+        tangent,
+        speed: rng.uniform(1.15, 2.75),
+        curve: rng.uniform(0.35, 1.15) * (rng.random() < 0.5 ? 1 : -1),
+        dur: rng.uniform(3.2, 6.8),
+      });
+    }
+
+    const out = new Float32Array(SOLAR_FLARE_COUNT * 13);
+    let o = 0;
+    for (let i = 0; i < SOLAR_FLARE_COUNT; i++) {
+      const jet = jets[i % numJets];
+      const spread = rng.uniform(0.0, 0.14);
+      const a = vec3Normalize([
+        jet.anchor[0] + rng.normal(0, spread),
+        jet.anchor[1] + rng.normal(0, spread),
+        jet.anchor[2] + rng.normal(0, spread),
+      ]);
+      const t = vec3Normalize([
+        jet.tangent[0] + rng.normal(0, 0.18),
+        jet.tangent[1] + rng.normal(0, 0.18),
+        jet.tangent[2] + rng.normal(0, 0.18),
+      ]);
+      const phase = rng.uniform(0, jet.dur);
+      const dur = jet.dur * rng.uniform(0.82, 1.22);
+      const spd = jet.speed * rng.uniform(0.72, 1.32);
+      const curve = jet.curve * rng.uniform(0.7, 1.3);
+      const size = rng.uniform(0.032, 0.115);
+      const temp = rng.uniform(0.25, 1.0);
+      const helixR = rng.uniform(0.08, 0.52);
+
+      out[o++] = a[0]; out[o++] = a[1]; out[o++] = a[2];
+      out[o++] = t[0]; out[o++] = t[1]; out[o++] = t[2];
+      out[o++] = phase; out[o++] = dur; out[o++] = spd; out[o++] = curve;
+      out[o++] = size; out[o++] = temp; out[o++] = helixR;
+    }
+    return out;
+  }
+
+  function spectralColorFromClass(t) {
+    // O/B blue-white -> A white-blue -> F/G warm yellow-white -> K/M amber-red
+    if (t < 0.16) return [0.56, 0.78, 1.35];
+    if (t < 0.34) return [0.78, 0.90, 1.25];
+    if (t < 0.56) return [1.08, 1.04, 0.98];
+    if (t < 0.76) return [1.22, 0.98, 0.68];
+    if (t < 0.90) return [1.30, 0.72, 0.38];
+    return [1.28, 0.45, 0.24];
+  }
+
+  function generateSpiralGalaxyStars(rng) {
+    const out = new Float32Array(GALAXY_STAR_COUNT * 10);
+    const numArms = 2;
+    const pitchTwist = 2.68;
+
+    for (let i = 0; i < GALAXY_STAR_COUNT; i++) {
+      const pop = rng.random();
+      let r, baseAng, ly, specT, size, lum;
+
+      if (pop < 0.16) {
+        // Dense luminous galactic bulge & bar
+        r = Math.pow(rng.random(), 1.65) * 4.9;
+        baseAng = rng.uniform(0, Math.PI * 2);
+        const bulgeH = 1.40 * Math.exp(-r * 0.34) + 0.16;
+        ly = rng.normal(0, bulgeH);
+        specT = clamp(0.54 + rng.normal(0.14, 0.16), 0.22, 0.98);
+        size = rng.uniform(0.038, 0.125);
+        lum = rng.uniform(0.32, 1.05) * (0.72 + 0.32 * Math.min(r / 3.0, 1.0));
+      } else if (pop < 0.76) {
+        // Primary logarithmic spiral arms (with O/B giant clusters along the ridge!)
+        const armIdx = i % numArms;
+        const armBase = (armIdx * Math.PI * 2) / numArms;
+        const u = rng.beta(1.25, 2.25);
+        r = 1.65 + u * (GALAXY_RADIUS - 1.65);
+        const spiralTheta = armBase + pitchTwist * Math.log(r * 0.42 + 1.0);
+        const armScatter = rng.normal(0, 0.21 + 0.27 * (r / GALAXY_RADIUS));
+        baseAng = spiralTheta + armScatter;
+        const diskH = 0.22 + 0.42 * Math.exp(-r * 0.14) + 0.015 * r;
+        ly = rng.normal(0, diskH);
+        const nearRidge = Math.abs(armScatter) < 0.18;
+        specT = nearRidge ? rng.beta(1.1, 2.6) : rng.random();
+        const isSupergiant = nearRidge && rng.random() < 0.048;
+        size = isSupergiant ? rng.uniform(0.16, 0.34) : rng.uniform(0.042, 0.135);
+        const innerFade = clamp((r - 1.2) / 4.2, 0.45, 1.0);
+        lum = (isSupergiant ? rng.uniform(1.85, 3.15) : rng.uniform(0.42, 1.38)) * innerFade;
+      } else if (pop < 0.92) {
+        // Secondary feathered spur arms & inter-arm stellar disk
+        const armIdx = i % 4;
+        const armBase = (armIdx * Math.PI * 2) / 4 + 0.58;
+        r = 2.0 + Math.pow(rng.random(), 0.85) * (GALAXY_RADIUS * 0.95 - 2.0);
+        const spiralTheta = armBase + pitchTwist * 0.94 * Math.log(r * 0.42 + 1.0);
+        baseAng = spiralTheta + rng.normal(0, 0.45);
+        ly = rng.normal(0, 0.38 + 0.018 * r);
+        specT = clamp(rng.beta(1.6, 1.4), 0.0, 1.0);
+        size = rng.uniform(0.04, 0.13);
+        lum = rng.uniform(0.32, 1.15);
+      } else {
+        // Extended galactic halo & globular clusters
+        r = 1.5 + Math.pow(rng.random(), 0.72) * (GALAXY_RADIUS * 1.18);
+        baseAng = rng.uniform(0, Math.PI * 2);
+        ly = rng.normal(0, 1.2 + 0.12 * r);
+        specT = rng.uniform(0.2, 0.95);
+        size = rng.uniform(0.038, 0.115);
+        lum = rng.uniform(0.28, 0.95);
+      }
+
+      const col = spectralColorFromClass(specT);
+      const jitter = rng.uniform(0.88, 1.15);
+      const twPhase = rng.uniform(0, Math.PI * 2);
+      const twFreq = rng.uniform(1.1, 4.8);
+
+      const o = i * 10;
+      out[o] = r; out[o + 1] = baseAng; out[o + 2] = ly;
+      out[o + 3] = col[0] * jitter; out[o + 4] = col[1] * jitter; out[o + 5] = col[2] * jitter;
+      out[o + 6] = size; out[o + 7] = twPhase; out[o + 8] = twFreq; out[o + 9] = lum;
+    }
+
+    // Fisher-Yates shuffle stride-10 records so the 76%/24% dust split mixes all populations evenly
+    for (let i = GALAXY_STAR_COUNT - 1; i > 0; i--) {
+      const j = Math.floor(rng.random() * (i + 1));
+      const oi = i * 10, oj = j * 10;
+      for (let k = 0; k < 10; k++) {
+        const tmp = out[oi + k];
+        out[oi + k] = out[oj + k];
+        out[oj + k] = tmp;
+      }
+    }
+    return out;
+  }
+
+  function generateNebulaClouds(rng) {
+    const out = new Float32Array(NEBULA_CLOUD_COUNT * 10);
+    const palette = [
+      [0.24, 0.18, 0.78], // Deep indigo
+      [0.54, 0.18, 0.85], // Luminous violet
+      [0.12, 0.62, 0.78], // Ionized OIII teal
+      [0.86, 0.16, 0.56], // H-alpha magenta-rose
+      [0.98, 0.44, 0.14], // Fiery amber-gold
+      [0.28, 0.46, 0.95], // Electric sapphire
+    ];
+    const pitchTwist = 2.68;
+
+    for (let i = 0; i < NEBULA_CLOUD_COUNT; i++) {
+      const armIdx = i % 2;
+      const armBase = armIdx * Math.PI;
+      const u = rng.beta(1.45, 1.85);
+      const r = 2.8 + u * (GALAXY_RADIUS * 0.94 - 2.8);
+      const spiralTheta = armBase + pitchTwist * Math.log(r * 0.42 + 1.0);
+      const ang = spiralTheta + rng.normal(0, 0.25 + 0.19 * u);
+      const ly = rng.normal(0, 0.34 + 0.35 * Math.exp(-r * 0.15));
+
+      let colIdx;
+      if (r < 7.2) colIdx = rng.choice([4, 3, 1], [0.52, 0.28, 0.20]);
+      else if (r < 15.0) colIdx = rng.choice([3, 1, 2, 5, 4], [0.28, 0.24, 0.22, 0.16, 0.10]);
+      else colIdx = rng.choice([0, 2, 5, 1, 3], [0.30, 0.26, 0.24, 0.14, 0.06]);
+
+      const c = palette[colIdx];
+      const sz = rng.uniform(2.0, 4.9) * (0.72 + 0.55 * (r / GALAXY_RADIUS));
+      const rot = rng.uniform(0, Math.PI * 2);
+      const seed = rng.uniform(0.0, 50.0);
+      const coreAtten = clamp((r - 2.2) / 5.5, 0.32, 1.0);
+      const opacity = rng.uniform(0.055, 0.145) * (1.10 - 0.32 * u) * coreAtten;
+
+      const o = i * 10;
+      out[o] = r; out[o + 1] = ang; out[o + 2] = ly;
+      out[o + 3] = c[0]; out[o + 4] = c[1]; out[o + 5] = c[2];
+      out[o + 6] = sz; out[o + 7] = rot; out[o + 8] = seed; out[o + 9] = opacity;
+    }
+    return out;
+  }
+
+  function generateDustLanes(rng) {
+    const out = new Float32Array(DUST_LANE_COUNT * 10);
+    const pitchTwist = 2.68;
+
+    for (let i = 0; i < DUST_LANE_COUNT; i++) {
+      const armIdx = i % 2;
+      const armBase = armIdx * Math.PI;
+      const u = rng.beta(1.2, 2.0);
+      const r = 2.1 + u * (GALAXY_RADIUS * 0.82 - 2.1);
+      // Dust hugs the concave inner edge of each spiral arm
+      const spiralTheta = armBase + pitchTwist * Math.log(r * 0.42 + 1.0) - 0.16;
+      const ang = spiralTheta + rng.normal(0, 0.14 + 0.12 * u);
+      const ly = rng.normal(0, 0.18 + 0.12 * Math.exp(-r * 0.18));
+
+      const sz = rng.uniform(1.15, 2.95) * (0.75 + 0.45 * u);
+      const rot = rng.uniform(0, Math.PI * 2);
+      const seed = rng.uniform(0.0, 50.0);
+      const depth = rng.uniform(0.24, 0.56);
+
+      const o = i * 10;
+      out[o] = r; out[o + 1] = ang; out[o + 2] = ly;
+      out[o + 3] = rng.uniform(0.18, 0.34);
+      out[o + 4] = rng.uniform(0.09, 0.16);
+      out[o + 5] = rng.uniform(0.08, 0.18);
+      out[o + 6] = sz; out[o + 7] = rot; out[o + 8] = seed; out[o + 9] = depth;
+    }
+    return out;
+  }
+
+  function generateDeepFieldStars(rng) {
+    const out = new Float32Array(DEEP_STAR_COUNT * 10);
+    for (let i = 0; i < DEEP_STAR_COUNT; i++) {
+      const u = rng.uniform(-1, 1);
+      const theta = rng.uniform(0, Math.PI * 2);
+      const s = Math.sqrt(Math.max(0, 1 - u * u));
+      const dist = rng.uniform(175.0, 320.0);
+      const col = spectralColorFromClass(rng.random());
+      const o = i * 10;
+      out[o] = dist * s * Math.cos(theta);
+      out[o + 1] = dist * u;
+      out[o + 2] = dist * s * Math.sin(theta);
+      out[o + 3] = col[0]; out[o + 4] = col[1]; out[o + 5] = col[2];
+      out[o + 6] = rng.uniform(1.2, 4.4);
+      out[o + 7] = rng.uniform(0, Math.PI * 2);
+      out[o + 8] = rng.uniform(0.6, 3.6);
+      out[o + 9] = rng.uniform(0.25, 1.25);
+    }
+    return out;
+  }
+
+  function generateDistantGalaxies(rng) {
+    const out = new Float32Array(DISTANT_GALAXY_COUNT * 14);
+    const tints = [
+      [0.65, 0.78, 1.25], [1.15, 0.88, 0.58], [0.85, 0.58, 1.15],
+      [0.52, 0.88, 1.05], [1.18, 0.65, 0.82],
+    ];
+    for (let i = 0; i < DISTANT_GALAXY_COUNT; i++) {
+      const u = rng.uniform(-0.88, 0.92);
+      const theta = rng.uniform(0, Math.PI * 2);
+      const s = Math.sqrt(Math.max(0, 1 - u * u));
+      const dist = rng.uniform(155.0, 260.0);
+      const col = tints[i % tints.length];
+      const o = i * 14;
+      out[o] = dist * s * Math.cos(theta);
+      out[o + 1] = dist * u;
+      out[o + 2] = dist * s * Math.sin(theta);
+      out[o + 3] = col[0]; out[o + 4] = col[1]; out[o + 5] = col[2];
+      out[o + 6] = rng.uniform(3.2, 10.5);      // billboard size
+      out[o + 7] = rng.uniform(0, Math.PI * 2); // rotation
+      out[o + 8] = rng.uniform(0.26, 0.92);     // inclination tilt
+      out[o + 9] = rng.random();                // spiral (<0.68) vs elliptical
+      out[o + 10] = rng.choice([2.0, 3.0, 4.0]);
+      out[o + 11] = rng.uniform(2.2, 4.2);
+      out[o + 12] = rng.uniform(0.32, 0.88);
+      out[o + 13] = rng.random();
+    }
+    return out;
+  }
+
+  // =========================================================================
+  // REAL-TIME WEBGL2 MULTI-PASS HDR + 4-OCTAVE BLOOM RENDERER
+  // =========================================================================
+  class CosmicWebGLRenderer {
+    constructor(canvas) {
+      this.canvas = canvas;
+      const gl = canvas.getContext("webgl2", {
+        antialias: false,
+        alpha: false,
+        depth: false,
+        stencil: false,
+        powerPreference: "high-performance",
+        preserveDrawingBuffer: false,
+      });
+      if (!gl) {
+        throw new Error("WebGL2 is not available in this browser or GPU context.");
+      }
+      this.gl = gl;
+
+      // Enable floating-point HDR render targets
+      const extFloat = gl.getExtension("EXT_color_buffer_float");
+      const extHalf = gl.getExtension("EXT_color_buffer_half_float");
+      this.useFloatHDR = Boolean(extFloat || extHalf);
+
+      this.width = 1280;
+      this.height = 720;
+      this.galaxyModel = buildGalaxyModelMatrix();
+
+      // Compile all 14 custom GLSL ES 3.00 shader programs
+      this.progs = {};
+      for (const [name, src] of Object.entries(SHADERS)) {
+        this.progs[name] = this._compileProgram(name, src.vs, src.fs);
+      }
+
+      // Generate deterministic cosmic datasets & build GPU VAOs
+      const rng = new SeededRNG(20261119);
+      this._buildGeometry(rng);
+
+      // FBO resources (created in resize)
+      this.hdrFbo = null;
+      this.hdrTex = null;
+      this.hdrDepth = null;
+      this.bloomLevels = [];
+
+      // Live shader & mouse physics parameters
+      this.bloomStrength = 0.48;
+      this.exposure = 1.04;
+      this.mouseForce = 1.0;
+      this.mouseMode = 0; // 0 = Gravity Swirl, 1 = Repel Wave, 2 = Solar Magnet
+      this.mouseActive = 0.0;
+      this.mouseUv = [0.5, 0.5];
+      this.pulsePos = [...SUN_CENTER];
+      this.pulseUv = [0.35, 0.45];
+      this.pulseAge = 99.0;
+    }
+
+    _compileShader(type, source, label) {
+      const gl = this.gl;
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, source);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+        const log = gl.getShaderInfoLog(sh) || "Unknown compile error";
+        gl.deleteShader(sh);
+        throw new Error(`Shader compile error [${label}]:\n${log}`);
+      }
+      return sh;
+    }
+
+    _compileProgram(name, vsSrc, fsSrc) {
+      const gl = this.gl;
+      const vs = this._compileShader(gl.VERTEX_SHADER, vsSrc, `${name}.vs`);
+      const fs = this._compileShader(gl.FRAGMENT_SHADER, fsSrc, `${name}.fs`);
+      const prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      gl.deleteShader(vs);
+      gl.deleteShader(fs);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        const log = gl.getProgramInfoLog(prog) || "Unknown link error";
+        gl.deleteProgram(prog);
+        throw new Error(`Program link error [${name}]:\n${log}`);
+      }
+      const uniforms = {};
+      const count = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
+      for (let i = 0; i < count; i++) {
+        const info = gl.getActiveUniform(prog, i);
+        if (info) uniforms[info.name] = gl.getUniformLocation(prog, info.name);
+      }
+      return { prog, u: uniforms };
+    }
+
+    _set1f(p, k, v) { const loc = p.u[k]; if (loc !== undefined && loc !== null) this.gl.uniform1f(loc, v); }
+    _set1i(p, k, v) { const loc = p.u[k]; if (loc !== undefined && loc !== null) this.gl.uniform1i(loc, v); }
+    _set2f(p, k, a, b) { const loc = p.u[k]; if (loc !== undefined && loc !== null) this.gl.uniform2f(loc, a, b); }
+    _set3f(p, k, v) { const loc = p.u[k]; if (loc !== undefined && loc !== null) this.gl.uniform3f(loc, v[0], v[1], v[2]); }
+    _setMat4(p, k, m) { const loc = p.u[k]; if (loc !== undefined && loc !== null) this.gl.uniformMatrix4fv(loc, false, m); }
+
+    _createQuadVbo() {
+      const gl = this.gl;
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+      return buf;
+    }
+
+    _buildGeometry(rng) {
+      const gl = this.gl;
+      this.quadVbo = this._createQuadVbo();
+
+      // Fullscreen & single-billboard quad VAO (loc 0: vec2)
+      this.quadVao = gl.createVertexArray();
+      gl.bindVertexArray(this.quadVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+      // Sun high-subdivision icosphere
+      const sunMesh = generateIcosphere(SUN_SUBDIVS);
+      this.sunIndexCount = sunMesh.indices.length;
+      this.sunVao = gl.createVertexArray();
+      gl.bindVertexArray(this.sunVao);
+      const sunVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, sunVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, sunMesh.verts, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      const sunIbo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sunIbo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, sunMesh.indices, gl.STATIC_DRAW);
+
+      // Corona volumetric shells icosphere
+      const shellMesh = generateIcosphere(CORONA_SHELL_SUBDIVS);
+      this.shellIndexCount = shellMesh.indices.length;
+      this.shellVao = gl.createVertexArray();
+      gl.bindVertexArray(this.shellVao);
+      const shellVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, shellVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, shellMesh.verts, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      const shellIbo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, shellIbo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, shellMesh.indices, gl.STATIC_DRAW);
+
+      // Coronal magnetic spline loops (16 floats/vertex = 64 bytes)
+      const loops = generateCoronalLoops(rng);
+      this.loopIndexCount = loops.indices.length;
+      this.loopVao = gl.createVertexArray();
+      gl.bindVertexArray(this.loopVao);
+      const loopVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, loopVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, loops.verts, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 64, 0);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 64, 12);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 64, 24);
+      gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 3, gl.FLOAT, false, 64, 36);
+      gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 64, 48);
+      const loopIbo = gl.createBuffer();
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, loopIbo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, loops.indices, gl.STATIC_DRAW);
+
+      // Solar flare particle jets (13 floats/particle = 52 bytes)
+      const flares = generateSolarFlareParticles(rng);
+      this.flareCount = SOLAR_FLARE_COUNT;
+      this.flareVao = gl.createVertexArray();
+      gl.bindVertexArray(this.flareVao);
+      const flareVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, flareVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, flares, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 52, 0);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 52, 12);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 52, 24);
+      gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 3, gl.FLOAT, false, 52, 40);
+
+      // 70,000 Spiral galaxy stars (10 floats/star = 40 bytes)
+      const stars = generateSpiralGalaxyStars(rng);
+      this.starCount = GALAXY_STAR_COUNT;
+      this.starSplit = Math.floor(GALAXY_STAR_COUNT * 0.76);
+      this.starVao = gl.createVertexArray();
+      gl.bindVertexArray(this.starVao);
+      const starVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, starVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, stars, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 40, 0);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 40, 12);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 40, 24);
+
+      // Instanced volumetric nebulae (10 floats/instance = 40 bytes)
+      const nebulae = generateNebulaClouds(rng);
+      this.nebulaCount = NEBULA_CLOUD_COUNT;
+      this.nebulaVao = gl.createVertexArray();
+      gl.bindVertexArray(this.nebulaVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(0, 0);
+      const nebVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, nebVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, nebulae, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 40, 0);  gl.vertexAttribDivisor(1, 1);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 40, 12); gl.vertexAttribDivisor(2, 1);
+      gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 40, 24); gl.vertexAttribDivisor(3, 1);
+
+      // Instanced dark interstellar dust lanes (10 floats/instance = 40 bytes)
+      const dust = generateDustLanes(rng);
+      this.dustCount = DUST_LANE_COUNT;
+      this.dustVao = gl.createVertexArray();
+      gl.bindVertexArray(this.dustVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(0, 0);
+      const dustVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, dustVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, dust, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 40, 0);  gl.vertexAttribDivisor(1, 1);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 40, 12); gl.vertexAttribDivisor(2, 1);
+      gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 40, 24); gl.vertexAttribDivisor(3, 1);
+
+      // Deep-field stars (10 floats/star = 40 bytes)
+      const deepStars = generateDeepFieldStars(rng);
+      this.deepStarCount = DEEP_STAR_COUNT;
+      this.deepStarVao = gl.createVertexArray();
+      gl.bindVertexArray(this.deepStarVao);
+      const deepVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, deepVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, deepStars, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 40, 0);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 40, 12);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 40, 24);
+
+      // Instanced distant spiral & elliptical galaxies (14 floats/instance = 56 bytes)
+      const distGals = generateDistantGalaxies(rng);
+      this.distGalCount = DISTANT_GALAXY_COUNT;
+      this.distGalVao = gl.createVertexArray();
+      gl.bindVertexArray(this.distGalVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVbo);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(0, 0);
+      const galVbo = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, galVbo);
+      gl.bufferData(gl.ARRAY_BUFFER, distGals, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 56, 0);  gl.vertexAttribDivisor(1, 1);
+      gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 56, 12); gl.vertexAttribDivisor(2, 1);
+      gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 56, 24); gl.vertexAttribDivisor(3, 1);
+      gl.enableVertexAttribArray(4); gl.vertexAttribPointer(4, 4, gl.FLOAT, false, 56, 40); gl.vertexAttribDivisor(4, 1);
+
+      gl.bindVertexArray(null);
+    }
+
+    _makeColorTex(w, h, useFloat) {
+      const gl = this.gl;
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      if (useFloat) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+      } else {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      }
+      return tex;
+    }
+
+    _destroyFramebuffers() {
+      const gl = this.gl;
+      if (this.hdrFbo) gl.deleteFramebuffer(this.hdrFbo);
+      if (this.hdrTex) gl.deleteTexture(this.hdrTex);
+      if (this.hdrDepth) gl.deleteRenderbuffer(this.hdrDepth);
+      for (const lv of this.bloomLevels) {
+        gl.deleteFramebuffer(lv.fboA);
+        gl.deleteFramebuffer(lv.fboB);
+        gl.deleteTexture(lv.texA);
+        gl.deleteTexture(lv.texB);
+      }
+      this.bloomLevels = [];
+    }
+
+    resize(w, h) {
+      const gl = this.gl;
+      w = Math.max(2, Math.floor(w));
+      h = Math.max(2, Math.floor(h));
+      this.width = w;
+      this.height = h;
+      this.canvas.width = w;
+      this.canvas.height = h;
+
+      this._destroyFramebuffers();
+
+      const tryBuild = (useFloat) => {
+        this.hdrTex = this._makeColorTex(w, h, useFloat);
+        this.hdrDepth = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, this.hdrDepth);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+
+        this.hdrFbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.hdrFbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.hdrTex, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.hdrDepth);
+        return gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      };
+
+      if (this.useFloatHDR && !tryBuild(true)) {
+        this._destroyFramebuffers();
+        this.useFloatHDR = false;
+        tryBuild(false);
+      } else if (!this.useFloatHDR) {
+        tryBuild(false);
+      }
+
+      // Build 4-octave separable Gaussian bloom pyramid (1/2, 1/4, 1/8, 1/16)
+      let bw = Math.max(2, w >> 1);
+      let bh = Math.max(2, h >> 1);
+      for (let i = 0; i < 4; i++) {
+        const texA = this._makeColorTex(bw, bh, this.useFloatHDR);
+        const fboA = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboA);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texA, 0);
+
+        const texB = this._makeColorTex(bw, bh, this.useFloatHDR);
+        const fboB = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fboB);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texB, 0);
+
+        this.bloomLevels.push({ w: bw, h: bh, texA, fboA, texB, fboB });
+        bw = Math.max(2, bw >> 1);
+        bh = Math.max(2, bh >> 1);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+
+    triggerPulse(worldPos, uv) {
+      this.pulsePos = [...worldPos];
+      this.pulseUv = [uv[0], uv[1]];
+      this.pulseAge = 0.001;
+    }
+
+    _bindMouseUniforms(p, camera) {
+      const effStrength = this.mouseActive * this.mouseForce * (0.85 + 0.45 * camera.mouseSpeed);
+      this._set3f(p, "u_mouse_ray_o", camera.rayOrigin);
+      this._set3f(p, "u_mouse_ray_d", camera.rayDir);
+      this._set1f(p, "u_mouse_strength", effStrength);
+      this._set1f(p, "u_mouse_mode", this.mouseMode);
+      this._set3f(p, "u_pulse_pos", this.pulsePos);
+      this._set1f(p, "u_pulse_age", this.pulseAge);
+    }
+
+    render(camera, viewMat, simTime, realTime) {
+      const gl = this.gl;
+      const aspect = this.width / Math.max(this.height, 1);
+      const projMat = mat4Perspective(camera.fovY, aspect, camera.near, camera.far);
+
+      // =====================================================================
+      // STAGE 1: HDR 3D SCENE RENDER PASS (RGBA16F + DEPTH24)
+      // =====================================================================
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.hdrFbo);
+      gl.viewport(0, 0, this.width, this.height);
+      gl.depthMask(true);
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // --- Pass 1A: Opaque Boiling 3D Sun (Depth Write ON) ---
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LESS);
+      gl.disable(gl.BLEND);
+      gl.enable(gl.CULL_FACE);
+      gl.cullFace(gl.BACK);
+
+      const pSun = this.progs.sun;
+      gl.useProgram(pSun.prog);
+      this._setMat4(pSun, "u_view", viewMat);
+      this._setMat4(pSun, "u_proj", projMat);
+      this._set3f(pSun, "u_sun_center", SUN_CENTER);
+      this._set1f(pSun, "u_sun_radius", SUN_RADIUS);
+      this._set3f(pSun, "u_cam_pos", camera.eye);
+      this._set1f(pSun, "u_time", simTime);
+      this._bindMouseUniforms(pSun, camera);
+      gl.bindVertexArray(this.sunVao);
+      gl.drawElements(gl.TRIANGLES, this.sunIndexCount, gl.UNSIGNED_INT, 0);
+
+      // --- Pass 1B: Deep-Field Stars & Distant Galaxies (Additive, Depth Write OFF) ---
+      gl.depthMask(false);
+      gl.disable(gl.CULL_FACE);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+
+      const pDeep = this.progs.deepStars;
+      gl.useProgram(pDeep.prog);
+      this._setMat4(pDeep, "u_view", viewMat);
+      this._setMat4(pDeep, "u_proj", projMat);
+      this._set1f(pDeep, "u_time", simTime);
+      this._set1f(pDeep, "u_viewport_h", this.height);
+      gl.bindVertexArray(this.deepStarVao);
+      gl.drawArrays(gl.POINTS, 0, this.deepStarCount);
+
+      const pDist = this.progs.distantGalaxies;
+      gl.useProgram(pDist.prog);
+      this._setMat4(pDist, "u_view", viewMat);
+      this._setMat4(pDist, "u_proj", projMat);
+      this._set3f(pDist, "u_cam_right", camera.right);
+      this._set3f(pDist, "u_cam_up", camera.up);
+      this._set1f(pDist, "u_time", simTime);
+      gl.bindVertexArray(this.distGalVao);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.distGalCount);
+
+      // --- Pass 1C: Sprawling 3D Spiral Galaxy (Core -> Nebulae -> 76% Stars -> Dust -> 24% Stars) ---
+      const pCore = this.progs.galaxyCore;
+      gl.useProgram(pCore.prog);
+      this._setMat4(pCore, "u_model", this.galaxyModel);
+      this._setMat4(pCore, "u_view", viewMat);
+      this._setMat4(pCore, "u_proj", projMat);
+      this._set3f(pCore, "u_cam_right", camera.right);
+      this._set3f(pCore, "u_cam_up", camera.up);
+      this._set1f(pCore, "u_core_radius", 9.0);
+      this._set1f(pCore, "u_time", simTime);
+      gl.bindVertexArray(this.quadVao);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      const pNeb = this.progs.nebula;
+      gl.useProgram(pNeb.prog);
+      this._setMat4(pNeb, "u_model", this.galaxyModel);
+      this._setMat4(pNeb, "u_view", viewMat);
+      this._setMat4(pNeb, "u_proj", projMat);
+      this._set3f(pNeb, "u_cam_right", camera.right);
+      this._set3f(pNeb, "u_cam_up", camera.up);
+      this._set1f(pNeb, "u_time", simTime);
+      this._bindMouseUniforms(pNeb, camera);
+      gl.bindVertexArray(this.nebulaVao);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.nebulaCount);
+
+      const pStars = this.progs.galaxyStars;
+      gl.useProgram(pStars.prog);
+      this._setMat4(pStars, "u_model", this.galaxyModel);
+      this._setMat4(pStars, "u_view", viewMat);
+      this._setMat4(pStars, "u_proj", projMat);
+      this._set1f(pStars, "u_time", simTime);
+      this._set1f(pStars, "u_viewport_h", this.height);
+      this._bindMouseUniforms(pStars, camera);
+      gl.bindVertexArray(this.starVao);
+      gl.drawArrays(gl.POINTS, 0, this.starSplit);
+
+      // Dark silhouetted interstellar dust lanes (alpha absorption blend)
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      const pDust = this.progs.dust;
+      gl.useProgram(pDust.prog);
+      this._setMat4(pDust, "u_model", this.galaxyModel);
+      this._setMat4(pDust, "u_view", viewMat);
+      this._setMat4(pDust, "u_proj", projMat);
+      this._set3f(pDust, "u_cam_right", camera.right);
+      this._set3f(pDust, "u_cam_up", camera.up);
+      this._set1f(pDust, "u_time", simTime);
+      gl.bindVertexArray(this.dustVao);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.dustCount);
+
+      // Foreground 24% galaxy stars gleaming over the dust lanes
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(pStars.prog);
+      gl.bindVertexArray(this.starVao);
+      gl.drawArrays(gl.POINTS, this.starSplit, this.starCount - this.starSplit);
+
+      // --- Pass 1D: Multi-Layered Volumetric Corona, Magnetic Loops & Flare Jets ---
+      const pShell = this.progs.coronaShell;
+      gl.useProgram(pShell.prog);
+      this._setMat4(pShell, "u_view", viewMat);
+      this._setMat4(pShell, "u_proj", projMat);
+      this._set3f(pShell, "u_sun_center", SUN_CENTER);
+      this._set3f(pShell, "u_cam_pos", camera.eye);
+      this._set1f(pShell, "u_time", simTime);
+      gl.bindVertexArray(this.shellVao);
+      const shellScales = [1.055, 1.135, 1.245];
+      for (let i = 0; i < 3; i++) {
+        this._set1f(pShell, "u_shell_radius", SUN_RADIUS * shellScales[i]);
+        this._set1f(pShell, "u_layer_id", i);
+        gl.drawElements(gl.TRIANGLES, this.shellIndexCount, gl.UNSIGNED_INT, 0);
+      }
+
+      // Analytical volumetric corona billboard (depth test off so streamers wrap behind limb cleanly)
+      gl.disable(gl.DEPTH_TEST);
+      const pVol = this.progs.coronaVol;
+      gl.useProgram(pVol.prog);
+      this._setMat4(pVol, "u_view", viewMat);
+      this._setMat4(pVol, "u_proj", projMat);
+      this._set3f(pVol, "u_sun_center", SUN_CENTER);
+      this._set3f(pVol, "u_cam_pos", camera.eye);
+      this._set3f(pVol, "u_cam_right", camera.right);
+      this._set3f(pVol, "u_cam_up", camera.up);
+      this._set1f(pVol, "u_sun_radius", SUN_RADIUS);
+      this._set1f(pVol, "u_billboard_radius", SUN_RADIUS * 3.55);
+      this._set1f(pVol, "u_time", simTime);
+      gl.bindVertexArray(this.quadVao);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // Re-enable depth test for 3D twisting coronal loops & erupting solar flare jets
+      gl.enable(gl.DEPTH_TEST);
+      const pLoops = this.progs.coronalLoops;
+      gl.useProgram(pLoops.prog);
+      this._setMat4(pLoops, "u_view", viewMat);
+      this._setMat4(pLoops, "u_proj", projMat);
+      this._set3f(pLoops, "u_sun_center", SUN_CENTER);
+      this._set3f(pLoops, "u_cam_pos", camera.eye);
+      this._set1f(pLoops, "u_time", simTime);
+      this._bindMouseUniforms(pLoops, camera);
+      gl.bindVertexArray(this.loopVao);
+      gl.drawElements(gl.TRIANGLES, this.loopIndexCount, gl.UNSIGNED_INT, 0);
+
+      const pFlares = this.progs.solarFlares;
+      gl.useProgram(pFlares.prog);
+      this._setMat4(pFlares, "u_view", viewMat);
+      this._setMat4(pFlares, "u_proj", projMat);
+      this._set3f(pFlares, "u_sun_center", SUN_CENTER);
+      this._set1f(pFlares, "u_sun_radius", SUN_RADIUS);
+      this._set1f(pFlares, "u_time", simTime);
+      this._set1f(pFlares, "u_viewport_h", this.height);
+      this._bindMouseUniforms(pFlares, camera);
+      gl.bindVertexArray(this.flareVao);
+      gl.drawArrays(gl.POINTS, 0, this.flareCount);
+
+      // =====================================================================
+      // STAGE 2: 4-OCTAVE SEPARABLE GAUSSIAN BLOOM PYRAMID
+      // =====================================================================
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+      gl.bindVertexArray(this.quadVao);
+
+      const lv0 = this.bloomLevels[0];
+      gl.bindFramebuffer(gl.FRAMEBUFFER, lv0.fboA);
+      gl.viewport(0, 0, lv0.w, lv0.h);
+      const pPre = this.progs.bloomPrefilter;
+      gl.useProgram(pPre.prog);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.hdrTex);
+      this._set1i(pPre, "u_scene_tex", 0);
+      this._set1f(pPre, "u_threshold", 0.92);
+      this._set1f(pPre, "u_knee", 0.55);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      const pBlur = this.progs.bloomBlur;
+      gl.useProgram(pBlur.prog);
+      this._set1i(pBlur, "u_tex", 0);
+
+      for (let i = 0; i < this.bloomLevels.length; i++) {
+        const lv = this.bloomLevels[i];
+        const srcTex = i === 0 ? lv.texA : this.bloomLevels[i - 1].texA;
+
+        // Horizontal blur -> fboB
+        gl.bindFramebuffer(gl.FRAMEBUFFER, lv.fboB);
+        gl.viewport(0, 0, lv.w, lv.h);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, srcTex);
+        this._set2f(pBlur, "u_direction", 1.0 / lv.w, 0.0);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+        // Vertical blur -> fboA
+        gl.bindFramebuffer(gl.FRAMEBUFFER, lv.fboA);
+        gl.viewport(0, 0, lv.w, lv.h);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, lv.texB);
+        this._set2f(pBlur, "u_direction", 0.0, 1.0 / lv.h);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      }
+
+      // =====================================================================
+      // STAGE 3: FINAL COMPOSITE (ACES FILMIC + CA + LENSING + FILM GRAIN)
+      // =====================================================================
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, this.width, this.height);
+      const pComp = this.progs.composite;
+      gl.useProgram(pComp.prog);
+
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.hdrTex);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.bloomLevels[0].texA);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.bloomLevels[1].texA);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.bloomLevels[2].texA);
+      gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, this.bloomLevels[3].texA);
+
+      this._set1i(pComp, "u_scene_tex", 0);
+      this._set1i(pComp, "u_bloom_0", 1);
+      this._set1i(pComp, "u_bloom_1", 2);
+      this._set1i(pComp, "u_bloom_2", 3);
+      this._set1i(pComp, "u_bloom_3", 4);
+      this._set1f(pComp, "u_bloom_strength", this.bloomStrength);
+      this._set1f(pComp, "u_exposure", this.exposure);
+      this._set1f(pComp, "u_time", realTime);
+      this._set2f(pComp, "u_resolution", this.width, this.height);
+      this._set2f(pComp, "u_mouse_uv", this.mouseUv[0], this.mouseUv[1]);
+      this._set1f(pComp, "u_mouse_active", this.mouseActive * Math.min(this.mouseForce, 1.2));
+      this._set1f(pComp, "u_mouse_mode", this.mouseMode);
+      this._set2f(pComp, "u_pulse_uv", this.pulseUv[0], this.pulseUv[1]);
+      this._set1f(pComp, "u_pulse_age", this.pulseAge);
+
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindVertexArray(null);
+    }
+  }
+
+  // =========================================================================
+  // APPLICATION BOOTSTRAP, MONITOR-RATIO RESIZING & MOUSE/TOUCH INTERACTION
+  // =========================================================================
+  const viewport = document.getElementById("viewport");
+  const canvas = document.getElementById("gl-canvas");
+  const loadingOverlay = document.getElementById("loading-overlay");
+  const loadingText = document.getElementById("loading-text");
+  const badgeFps = document.getElementById("badge-fps");
+  const badgeRes = document.getElementById("badge-res");
+  const badgeHdr = document.getElementById("badge-hdr");
+  const hintPill = document.getElementById("hint-pill");
+  const settingsPanel = document.getElementById("settings-panel");
+
+  let renderer;
+  try {
+    renderer = new CosmicWebGLRenderer(canvas);
+  } catch (err) {
+    loadingText.textContent = err.message || "WebGL2 initialization failed.";
+    console.error(err);
+    return;
+  }
+
+  badgeHdr.textContent = renderer.useFloatHDR ? "HDR16F" : "SDR8";
+  const camera = new InteractiveCameraRig();
+
+  let paused = false;
+  let simSpeed = 1.0;
+  let simTime = 6.5;
+  let realTime = 0.0;
+  let renderScaleMode = "auto";
+  let pendingScreenshot = false;
+  let hintFaded = false;
+
+  function fadeHintOnce() {
+    if (!hintFaded) {
+      hintFaded = true;
+      setTimeout(() => { hintPill.style.opacity = "0"; }, 2200);
+    }
+  }
+
+  function applyViewportSize() {
+    const rect = viewport.getBoundingClientRect();
+    const cssW = Math.max(2, rect.width);
+    const cssH = Math.max(2, rect.height);
+    let scale = 1.0;
+    if (renderScaleMode === "auto") {
+      scale = Math.min(window.devicePixelRatio || 1, 1.5);
+      // Cap total pixels gracefully on ultra-4K monitors so 60 FPS stays effortless
+      if (cssW * scale * cssH * scale > 2600000) {
+        scale = Math.sqrt(2600000 / (cssW * cssH));
+      }
+    } else {
+      scale = parseFloat(renderScaleMode) || 1.0;
+    }
+    const rw = Math.max(2, Math.round(cssW * scale));
+    const rh = Math.max(2, Math.round(cssH * scale));
+    camera.setAspect(rw / rh);
+    renderer.resize(rw, rh);
+    badgeRes.textContent = `${rw}×${rh}`;
+  }
+
+  applyViewportSize();
+  let resizeTimer = null;
+  const ro = new ResizeObserver(() => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(applyViewportSize, 40);
+  });
+  ro.observe(viewport);
+
+  // --- Pointer (Mouse + Touch) Interaction Engine ---
+  const activePointers = new Map();
+  let isDragging = false;
+  let dragButton = 0;
+  let downX = 0, downY = 0, lastX = 0, lastY = 0;
+  let movedDist = 0;
+  let lastPinchDist = 0;
+
+  function updateCursorFromClient(clientX, clientY, speedBoost = 0) {
+    const rect = canvas.getBoundingClientRect();
+    const u = clamp((clientX - rect.left) / Math.max(rect.width, 1), 0, 1);
+    const v = clamp(1.0 - (clientY - rect.top) / Math.max(rect.height, 1), 0, 1);
+    renderer.mouseUv = [u, v];
+    camera.setMouseNdc(u * 2.0 - 1.0, v * 2.0 - 1.0, speedBoost);
+  }
+
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    fadeHintOnce();
+    updateCursorFromClient(e.clientX, e.clientY, 0.35);
+
+    if (activePointers.size === 1) {
+      isDragging = true;
+      dragButton = e.button;
+      downX = lastX = e.clientX;
+      downY = lastY = e.clientY;
+      movedDist = 0;
+      canvas.classList.add("dragging");
+    } else if (activePointers.size === 2) {
+      const pts = [...activePointers.values()];
+      lastPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    }
+  });
+
+  canvas.addEventListener("pointermove", (e) => {
+    const dxPrev = e.clientX - lastX;
+    const dyPrev = e.clientY - lastY;
+    const step = Math.hypot(dxPrev, dyPrev);
+    updateCursorFromClient(e.clientX, e.clientY, Math.min(step * 0.015, 0.45));
+
+    if (activePointers.has(e.pointerId)) {
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (activePointers.size === 2) {
+      const pts = [...activePointers.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (lastPinchDist > 0) {
+        camera.zoom((dist - lastPinchDist) * 0.022);
+      }
+      lastPinchDist = dist;
+      return;
+    }
+
+    if (isDragging) {
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      movedDist += Math.hypot(dx, dy);
+      if (dragButton === 2 || e.shiftKey) {
+        camera.dragPan(dx, dy);
+      } else {
+        camera.dragOrbit(dx, dy);
+      }
+      syncOrbitButton();
+    } else {
+      lastX = e.clientX;
+      lastY = e.clientY;
+    }
+  });
+
+  function endPointer(e) {
+    const wasSingle = activePointers.size === 1;
+    activePointers.delete(e.pointerId);
+    if (activePointers.size < 2) lastPinchDist = 0;
+
+    if (wasSingle && isDragging) {
+      isDragging = false;
+      canvas.classList.remove("dragging");
+      // Clean click/tap without dragging -> trigger 3D Cosmic Shockwave Pulse!
+      if (movedDist < 6 && dragButton === 0) {
+        updateCursorFromClient(e.clientX, e.clientY, 0.8);
+        const worldHit = camera.computeClickWorldPoint();
+        renderer.triggerPulse(worldHit, renderer.mouseUv);
+      }
+    }
+  }
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
+  canvas.addEventListener("pointerleave", () => {
+    if (!isDragging) camera.mouseInside = false;
+  });
+
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    fadeHintOnce();
+    const norm = clamp(-e.deltaY / 110.0, -3.5, 3.5);
+    camera.zoom(norm);
+  }, { passive: false });
+
+  // --- HUD Buttons & Sliders ---
+  const presetBtns = [...document.querySelectorAll(".preset-btn")];
+  function setPreset(id) {
+    camera.applyPreset(id, false);
+    presetBtns.forEach((b) => b.classList.toggle("active", Number(b.dataset.preset) === id));
+  }
+  presetBtns.forEach((b) => b.addEventListener("click", () => setPreset(Number(b.dataset.preset))));
+
+  const modeBtns = [...document.querySelectorAll(".mode-btn")];
+  function setMouseMode(modeId) {
+    renderer.mouseMode = modeId;
+    modeBtns.forEach((b) => b.classList.toggle("active", Number(b.dataset.mode) === modeId));
+  }
+  modeBtns.forEach((b) => b.addEventListener("click", () => setMouseMode(Number(b.dataset.mode))));
+
+  const btnOrbit = document.getElementById("btn-orbit");
+  function syncOrbitButton() {
+    btnOrbit.classList.toggle("active", camera.autoOrbit);
+  }
+  btnOrbit.addEventListener("click", () => {
+    camera.autoOrbit = !camera.autoOrbit;
+    syncOrbitButton();
+  });
+
+  const btnPlay = document.getElementById("btn-play");
+  function togglePause() {
+    paused = !paused;
+    btnPlay.textContent = paused ? "Play" : "Pause";
+  }
+  btnPlay.addEventListener("click", togglePause);
+
+  document.getElementById("btn-pulse").addEventListener("click", () => {
+    renderer.triggerPulse(SUN_CENTER, [0.34, 0.44]);
+  });
+
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    camera.reset();
+    setPreset(1);
+    syncOrbitButton();
+  });
+
+  document.getElementById("btn-shot").addEventListener("click", () => {
+    pendingScreenshot = true;
+  });
+
+  document.getElementById("btn-settings").addEventListener("click", () => {
+    settingsPanel.classList.toggle("hidden");
+  });
+
+  document.getElementById("btn-fullscreen").addEventListener("click", () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  });
+
+  const btnHud = document.getElementById("btn-hud");
+  function toggleHud() {
+    const hidden = viewport.classList.toggle("hud-hidden");
+    btnHud.textContent = hidden ? "Show UI" : "Hide UI";
+  }
+  btnHud.addEventListener("click", toggleHud);
+
+  // Sliders
+  const bindSlider = (id, valId, fmt, onChange) => {
+    const el = document.getElementById(id);
+    const out = document.getElementById(valId);
+    el.addEventListener("input", () => {
+      const v = parseFloat(el.value);
+      out.textContent = fmt(v);
+      onChange(v);
+    });
+  };
+  bindSlider("slider-force", "val-force", (v) => v.toFixed(2), (v) => { renderer.mouseForce = v; });
+  bindSlider("slider-parallax", "val-parallax", (v) => v.toFixed(2), (v) => { camera.parallaxGain = v; });
+  bindSlider("slider-bloom", "val-bloom", (v) => v.toFixed(2), (v) => { renderer.bloomStrength = v; });
+  bindSlider("slider-exposure", "val-exposure", (v) => v.toFixed(2), (v) => { renderer.exposure = v; });
+  bindSlider("slider-speed", "val-speed", (v) => `${v.toFixed(2)}x`, (v) => { simSpeed = v; });
+
+  const selectScale = document.getElementById("select-scale");
+  const valScale = document.getElementById("val-scale");
+  selectScale.addEventListener("change", () => {
+    renderScaleMode = selectScale.value;
+    valScale.textContent = renderScaleMode === "auto" ? "Auto" : `${renderScaleMode}x`;
+    applyViewportSize();
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")) return;
+    const k = e.key.toLowerCase();
+    if (k === " ") { e.preventDefault(); togglePause(); }
+    else if (k === "c") { camera.autoOrbit = !camera.autoOrbit; syncOrbitButton(); }
+    else if (k === "r") { camera.reset(); setPreset(1); syncOrbitButton(); }
+    else if (k === "1" || k === "2" || k === "3" || k === "4") setPreset(Number(k));
+    else if (k === "m") setMouseMode((renderer.mouseMode + 1) % 3);
+    else if (k === "p") renderer.triggerPulse(camera.computeClickWorldPoint(), renderer.mouseUv);
+    else if (k === "s") pendingScreenshot = true;
+    else if (k === "h") toggleHud();
+    else if (k === "f") document.getElementById("btn-fullscreen").click();
+  });
+
+  window.addEventListener("themechange", () => {
+    // Space cosmos renders full HDR; UI panels automatically adapt via semantic CSS tokens
+  });
+
+  // --- Main 60fps Animation Loop ---
+  let lastTs = performance.now();
+  let fpsAccum = 0;
+  let fpsFrames = 0;
+  let firstFrameDone = false;
+
+  function frame(now) {
+    const dt = Math.min((now - lastTs) * 0.001, 0.05);
+    lastTs = now;
+    realTime += dt;
+    if (!paused) simTime += dt * simSpeed;
+
+    // Smoothly blend cursor interaction presence in/out
+    const targetActive = camera.mouseInside ? 1.0 : 0.0;
+    renderer.mouseActive += (targetActive - renderer.mouseActive) * (1.0 - Math.exp(-8.0 * Math.max(dt, 0.001)));
+
+    if (renderer.pulseAge < 10.0) {
+      renderer.pulseAge += dt;
+    }
+
+    const viewMat = camera.update(dt, paused, simSpeed, isDragging);
+    renderer.render(camera, viewMat, simTime, realTime);
+
+    if (pendingScreenshot) {
+      pendingScreenshot = false;
+      try {
+        const a = document.createElement("a");
+        a.download = `cosmic_sun_galaxy_${renderer.width}x${renderer.height}.png`;
+        a.href = canvas.toDataURL("image/png");
+        a.click();
+      } catch (e) {
+        console.warn("Screenshot capture failed:", e);
+      }
+    }
+
+    if (!firstFrameDone) {
+      firstFrameDone = true;
+      loadingOverlay.style.opacity = "0";
+      setTimeout(() => { loadingOverlay.style.display = "none"; }, 500);
+    }
+
+    fpsAccum += dt;
+    fpsFrames++;
+    if (fpsAccum >= 0.45) {
+      badgeFps.textContent = `${Math.round(fpsFrames / fpsAccum)} FPS`;
+      fpsAccum = 0;
+      fpsFrames = 0;
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
